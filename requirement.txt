@@ -1,0 +1,344 @@
+# API Response Comparison Tool - Requirements Document
+
+## 1. Purpose & Problem Statement
+
+### Development Team Pain Points
+Development teams face significant risks when refactoring or migrating APIs. Common scenarios include:
+- **Legacy System Migration**: Moving from old frameworks (Spring Boot 1.x → 3.x, .NET Framework → .NET Core)
+- **Database Migration**: Changing databases (Oracle → PostgreSQL) affects API response formats
+- **Code Quality Improvements**: Fixing Sonar scan issues or security vulnerabilities may alter API behavior
+- **Architecture Refactoring**: Microservices breakup or monolith modernization
+- **Performance Optimization**: Code changes that might impact business logic
+
+### Current Manual Process Problems
+- **Time-consuming**: Manual testing takes 2-3 days per API migration
+- **Error-prone**: Human eyes miss subtle differences in JSON responses
+- **Incomplete Coverage**: Only test happy path scenarios, miss edge cases
+- **Not Repeatable**: Different developers test differently each time
+- **No Documentation**: No record of what was verified
+
+### Solution
+Build an automated tool that imports existing API calls from various sources (HAR files, Postman collections, Swagger specs) and executes them against both legacy and new environments to automatically detect any response differences.
+
+## 2. Test Suite Management Formats
+
+The tool supports two interchangeable formats for managing test suites — **Excel** and **XML**. Both formats carry identical data structures and can be used independently or alongside each other. Excel is the primary format for human editing and review; XML is the backup/restore format for preserving and restoring complete suite state.
+
+---
+
+### 2.1 Excel Format
+
+The tool uses an Excel workbook with 3 fixed configuration tabs plus a variable number of Test Group sheets:
+
+#### Tab 1: Settings
+Basic test suite information and execution configuration:
+- Suite metadata (name, description, version, author, last updated)
+- Execution settings (mode, timeout, parallel limits, retry logic)
+- Comparison rules (ignore fields, case sensitivity, numeric tolerance)
+- Storage options (save responses, response size limits)
+
+#### Tab 2: Environment Setting
+Environment-specific configuration with source/target separation:
+- Environment URLs (source legacy URL, target new URL)
+- Authentication profile references (maps to Auth Profiles tab)
+- Default headers per environment (applied to all test cases automatically)
+
+#### Tab 3: Auth Profiles
+Reusable authentication configurations:
+- Profile name (reference key used in Environment Setting)
+- Authentication type (none, basic, bearer, client_credentials, saml)
+- Complete configuration fields (token URL, credentials, scopes, etc.)
+
+#### Test Group Sheets (TC - \<Name\>)
+Each logical group of test cases lives in its own dedicated sheet, named with the prefix `TC - ` followed by the group name (e.g. `TC - User APIs`, `TC - Auth APIs`, `TC - Payment APIs`). The system identifies Test Group sheets by scanning for the `TC - ` prefix — any sheet not matching this prefix is treated as a configuration tab.
+
+**Sheet layout:**
+
+Each TC sheet contains two sections:
+
+**Group Info block (rows 1–4)** — metadata at the top of the sheet:
+- Group Name
+- Description
+- Owner
+
+**Test Case table (from row 6 onwards)** — two visually separated sections:
+- **Test Case Definition (GREEN section)**: ID, Name, Description, Enabled, Method, Endpoint, Query Params, Form Params, JSON Body, Headers, Author
+- **Execution Results (RED section)**: Status, Differences, Source Status, Target Status, Source Response, Target Response, Executed At
+
+**Benefits of per-sheet grouping:**
+- Easy navigation across large test suites — each functional domain is one tab
+- Groups can be added, removed, or reordered independently
+- Execution can be scoped to specific groups by selecting sheets
+- Cleaner Excel UX — no need to scroll through hundreds of mixed rows
+
+---
+
+### 2.2 XML Format
+
+The XML format mirrors the Excel structure exactly — same four logical blocks (Settings, Environment, Auth Profiles, Test Groups) — ensuring full fidelity when converting between the two formats. It is designed primarily for **backup and restore** of complete test suite state.
+
+#### XML Schema Structure
+
+```xml
+<testSuite version="1.0" createdBy="john.doe@company.com" createdDate="2025-01-15">
+
+  <settings>
+    <suiteName>User API Regression Tests</suiteName>
+    <description>Test suite for User Management APIs during v2.0 migration</description>
+    <version>1.0</version>
+    <lastUpdatedBy>jane.smith@company.com</lastUpdatedBy>
+    <lastUpdatedDate>2025-01-20</lastUpdatedDate>
+    <execution>
+      <mode>parallel</mode>
+      <timeout>30</timeout>
+      <parallelLimit>10</parallelLimit>
+      <delayBetweenRequests>100</delayBetweenRequests>
+      <retries>2</retries>
+    </execution>
+    <comparison>
+      <ignoreFields>timestamp,requestId,executionTime</ignoreFields>
+      <caseSensitive>true</caseSensitive>
+      <ignoreArrayOrder>false</ignoreArrayOrder>
+      <numericTolerance>0.001</numericTolerance>
+    </comparison>
+    <storage>
+      <saveResponses>true</saveResponses>
+      <saveDetails>true</saveDetails>
+      <responseSizeLimit>1048576</responseSizeLimit>
+    </storage>
+  </settings>
+
+  <environment>
+    <source url="https://api-legacy.company.com" authProfile="Legacy-SAML"/>
+    <target url="https://api-new.company.com"    authProfile="Modern-OAuth2"/>
+    <defaultHeaders>
+      <header name="Content-Type"  source="application/json"      target="application/json"/>
+      <header name="Accept"        source="application/json"      target="application/json"/>
+      <header name="X-API-Version" source="1.0"                   target="2.0"/>
+      <header name="X-Environment" source="legacy"                target="production"/>
+    </defaultHeaders>
+  </environment>
+
+  <authProfiles>
+    <profile name="Legacy-SAML"   type="saml"               tokenUrl="https://sso.company.com/saml/token"
+             username="api-user@company.com" entityId="legacy-api-entity"/>
+    <profile name="Modern-OAuth2" type="client_credentials"  tokenUrl="https://auth.company.com/oauth/token"
+             clientId="api-client-v2" scope="api:read api:write"/>
+    <profile name="No-Auth"       type="none"/>
+  </authProfiles>
+
+  <testGroups>
+    <group name="User APIs" description="User management API tests for v2.0 migration" owner="john.doe@company.com">
+      <testCase id="TC001" name="Get User Profile" description="Retrieve user profile by user ID"
+                enabled="true" method="GET" endpoint="/api/users/12345">
+        <queryParams>&amp;include=profile&amp;include=preferences</queryParams>
+        <formParams/>
+        <jsonBody/>
+        <headers/>
+        <author>john.doe@company.com</author>
+        <results>
+          <status>passed</status>
+          <differences/>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>200</targetStatus>
+          <sourceResponse><![CDATA[{"id": 12345, "name": "John Doe"}]]></sourceResponse>
+          <targetResponse><![CDATA[{"id": 12345, "name": "John Doe"}]]></targetResponse>
+          <executedAt>2025-01-15 10:30:15</executedAt>
+        </results>
+      </testCase>
+      <!-- more test cases... -->
+    </group>
+
+    <group name="Auth APIs" description="Authentication and session management tests" owner="lisa.garcia@company.com">
+      <!-- test cases... -->
+    </group>
+  </testGroups>
+
+</testSuite>
+```
+
+#### XML Naming Conventions
+- Element names use camelCase
+- Attribute names use camelCase
+- Response bodies wrapped in `<![CDATA[...]]>` to safely embed raw JSON
+- Empty optional fields represented as self-closing tags (e.g. `<formParams/>`)
+
+#### XML Operations
+- **Generate template**: Download a pre-filled sample XML file demonstrating all fields and two example groups — mirrors the Excel sample template
+- **Export to XML**: Export the currently loaded test suite from memory to a well-formed XML file for backup
+- **Import from XML**: Upload an XML file to restore a complete test suite into memory, replacing the current session state
+
+#### Format Equivalence Rules
+Both formats must hold the same data. When importing, the system validates that all required fields are present before accepting the file. Execution results (`<results>` block / RED section) are included in both formats so a backup taken mid-execution can be fully restored.
+
+## 3. Core Functionality
+
+### 3.1 Test Suite File Processing
+
+**Excel:**
+- Import Excel workbook and parse 3 fixed config tabs plus all `TC - ` prefixed sheets
+- Export Excel with updated execution results written back to each TC sheet
+- Provide downloadable Excel template with example groups and test cases
+- Validate imported data (required fields, JSON syntax)
+
+**XML:**
+- Import XML file and restore complete suite state into memory (settings, environment, auth profiles, all test groups and results)
+- Export current in-memory suite to a well-formed XML file for backup
+- Provide downloadable XML template mirroring the Excel sample
+- Validate XML structure and required fields on import before accepting
+
+### 3.2 Test Case Creation
+- **HAR Import**: Parse browser network traffic to generate test cases, assign to a selected group
+- **Postman Import**: Convert Postman collections to test cases, map folders to groups
+- **Swagger Import**: Generate test cases from OpenAPI specifications, group by tags
+- **Manual Creation**: Web form for creating individual test cases within a chosen group
+- **Clone Function**: Duplicate and modify existing test cases within or across groups
+
+### 3.3 Authentication System
+- Manage reusable authentication profiles
+- Support multiple types: None, Basic Auth, Bearer Token, OAuth2 Client Credentials, SAML
+- Apply authentication profiles at environment level
+- Automatically apply default headers per environment
+
+### 3.4 Test Execution
+- **Parallel Mode**: Execute source and target APIs simultaneously
+- **Source First Mode**: Execute source first, save response, then execute target
+- Support executing all groups at once or scoping execution to selected groups
+- Handle all HTTP methods with proper authentication
+- Real-time progress tracking and monitoring
+- Continue execution when individual tests fail
+
+### 3.5 Response Comparison
+- Deep JSON object comparison
+- HTTP status code validation
+- Detect missing fields, different values, type mismatches
+- Configurable ignore rules (timestamps, IDs, dynamic fields)
+- Generate human-readable difference descriptions
+
+### 3.6 Results Management
+- Store results integrated with test case definitions inside each TC sheet
+- Track execution status per test case (passed, failed, error)
+- Export updated Excel with results written back to the corresponding TC sheet
+- Provide execution summary and statistics per group and overall
+
+## 4. Implementation Architecture
+
+### Backend (Spring Boot)
+- **REST API Controllers**: Handle file uploads, test management, execution
+- **Excel Processing**: Apache POI for reading/writing Excel files, detect TC sheets by `TC - ` prefix
+- **XML Processing**: JAXB or Jackson XML for reading/writing XML files, same data model as Excel
+- **HTTP Client**: Execute API calls against source and target environments
+- **JSON Processing**: Jackson for response comparison
+- **In-Memory Storage**: No database required, store data in memory; both Excel and XML map to the same internal model
+- **CORS Proxy**: Route API calls to avoid browser CORS restrictions
+
+### Frontend (HTML/JavaScript)
+- **File Upload Interface**: Handle Excel, XML, HAR, Postman, Swagger files; auto-detect format on upload
+- **Test Group UI**: List and navigate test groups, create/rename/delete groups
+- **Test Management UI**: Create, edit, view test cases within a group
+- **Execution Interface**: Start/stop execution for all groups or selected groups, monitor real-time progress
+- **Results Display**: Show comparison results with visual difference highlighting per group
+- **Export Function**: Download updated Excel or XML — user selects preferred format
+
+### Data Flow
+1. Import Excel **or** XML → Parse into unified in-memory model (settings, environment, auth profiles, test groups)
+2. Import additional test cases (HAR/Postman/Swagger) → Convert and assign to a group
+3. Configure environment settings and authentication profiles
+4. Execute test cases (all groups or selected) → Make HTTP calls to both environments → Compare responses
+5. Display integrated results per group → Export updated Excel or XML with execution data
+
+## 5. Implementation Phases
+
+### Phase 1: Foundation
+Build core file processing and basic backend infrastructure:
+- Spring Boot REST API setup
+- Excel import/export using Apache POI — parse 3 config tabs and detect TC sheets by prefix
+- XML import/export using JAXB/Jackson XML — same internal model as Excel
+- In-memory storage for test suites and groups
+- Basic test case CRUD operations per group
+- Simple HTML frontend for file upload/download (Excel and XML)
+
+### Phase 2: Authentication & Environment
+Implement authentication system and environment configuration:
+- Authentication profile management
+- Environment setting configuration
+- Authentication handlers (Basic, Bearer, OAuth2, SAML)
+- Default headers application system
+- API proxy for CORS handling
+
+### Phase 3: Execution Engine
+Build test execution and comparison capabilities:
+- HTTP client for API calls
+- Parallel and source-first execution modes
+- Scoped execution by selected groups
+- Response comparison algorithms
+- Real-time progress monitoring
+- Results integration written back to each TC sheet
+
+### Phase 4: Import Sources & Polish
+Complete import capabilities and finalize the tool:
+- HAR file parser and test case generator (with group assignment)
+- Postman collection importer (map folders to groups)
+- Swagger/OpenAPI test case generator (map tags to groups)
+- UI improvements and comprehensive error handling
+- Performance optimization and testing
+
+## 6. Technical Requirements
+
+### Performance
+- Handle 500+ test cases across multiple groups per test suite
+- Execute 50+ concurrent API calls
+- Process large HAR files (10MB+)
+- Responsive UI during long-running executions
+
+### Browser Support
+- Chrome 70+, Firefox 65+, Safari 12+, Edge 79+
+- Internet Explorer 11 with basic functionality
+
+### Dependencies
+- **Backend**: Spring Boot, Apache POI, Jackson / JAXB (XML), HTTP Client libraries
+- **Frontend**: Vanilla JavaScript, SheetJS (if needed), minimal external dependencies
+
+## 7. Success Criteria
+
+### Functional Requirements
+- Successfully import Excel or XML with 500+ test cases across multiple groups
+- Execute all test cases against both environments, with per-group scoping support
+- Detect 100% of response differences automatically
+- Export suite as Excel or XML with integrated execution results
+- Backup and restore complete suite state via XML (including mid-execution results)
+- Handle enterprise authentication methods
+
+### User Experience
+- Professional, clean user interface
+- Easy group-based navigation — one tab per functional domain
+- Clear visual separation between test case definition (GREEN) and results (RED)
+- Fast import processing (HAR with 200+ APIs in under 30 seconds)
+- Real-time execution monitoring with progress indicators per group
+- Actionable difference reports with clear explanations
+
+### Technical Performance
+- Handle large test suites without performance degradation
+- Execute multiple parallel API calls efficiently
+- Work reliably in enterprise browser environments
+- Process large files without memory issues
+- Provide CORS-free API execution through backend proxy
+
+## 8. Scope Limitations
+
+### What the Tool Does
+- Verify API refactoring doesn't break business logic
+- Import existing API calls from multiple sources
+- Execute automated bulk API comparisons organized by test groups
+- Generate detailed difference reports
+- Handle enterprise authentication requirements
+- Backup and restore complete test suites via XML
+
+### What the Tool Does Not Do
+- Performance testing or load testing
+- API documentation generation
+- Security vulnerability scanning
+- Production API monitoring
+- Replace unit testing or integration testing
+
+This tool focuses specifically on API migration verification and response comparison.

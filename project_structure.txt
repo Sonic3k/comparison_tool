@@ -1,0 +1,238 @@
+API Response Comparison Tool - Clean Project Structure
+api-response-comparison-tool/
+├── README.md
+├── .gitignore
+├── pom.xml                              # Maven configuration
+├── docs/
+│   ├── API.md                          # API documentation
+│   └── USER_GUIDE.md                   # User guide
+├── src/
+│   └── main/
+│       ├── java/
+│       │   └── com/
+│       │       └── apicomparison/
+│       │           └── tool/
+│       │               ├── ApiComparisonToolApplication.java
+│       │               ├── config/                    # Configuration classes
+│       │               │   ├── CorsConfig.java
+│       │               │   ├── WebConfig.java
+│       │               │   ├── AsyncConfig.java       # Multi-suite execution pools
+│       │               │   └── RestTemplateConfig.java
+│       │               ├── controller/                # REST Controllers
+│       │               │   ├── TestSuiteController.java     # Multi-suite CRUD
+│       │               │   ├── ExecutionController.java     # Start/Pause/Resume/Progress
+│       │               │   ├── FileUploadController.java    # Excel template upload
+│       │               │   ├── ImportController.java        # HAR/Postman/Swagger import
+│       │               │   ├── ExportController.java        # Excel export with results
+│       │               │   └── ProxyController.java         # CORS proxy for API calls
+│       │               ├── service/                   # Business Logic
+│       │               │   ├── suite/                       # Test Suite Management
+│       │               │   │   ├── TestSuiteService.java           # Multi-suite operations
+│       │               │   │   ├── TestSuiteValidationService.java # Suite validation
+│       │               │   │   └── TestSuiteStateService.java      # Suite state tracking
+│       │               │   ├── excel/                       # Excel Processing (4-tab)
+│       │               │   │   ├── ExcelProcessorService.java      # Main import/export
+│       │               │   │   ├── SettingsTabProcessor.java       # Tab 1: Settings
+│       │               │   │   ├── EnvironmentTabProcessor.java    # Tab 2: Environment Setting
+│       │               │   │   ├── AuthProfileTabProcessor.java    # Tab 3: Auth Profiles
+│       │               │   │   ├── TestCaseTabProcessor.java       # Tab 4: Test Cases (GREEN + RED)
+│       │               │   │   ├── ExcelExportService.java         # Export with integrated results
+│       │               │   │   └── ExcelValidationService.java     # Excel structure validation
+│       │               │   ├── import/                      # Import Sources
+│       │               │   │   ├── ImportServiceFactory.java       # Factory pattern
+│       │               │   │   ├── HarImportService.java           # Browser network traffic
+│       │               │   │   ├── PostmanImportService.java       # Postman collections
+│       │               │   │   ├── SwaggerImportService.java       # OpenAPI specs
+│       │               │   │   └── ManualImportService.java        # Manual test case creation
+│       │               │   ├── execution/                   # Test Execution Engine
+│       │               │   │   ├── TestExecutionService.java       # Multi-suite execution manager
+│       │               │   │   ├── ExecutionStateManager.java      # RUNNING/PAUSED/COMPLETED states
+│       │               │   │   ├── ProgressTrackingService.java    # Real-time progress updates
+│       │               │   │   ├── HttpClientService.java          # API call execution
+│       │               │   │   ├── ParallelExecutionService.java   # Concurrent test execution
+│       │               │   │   └── ExecutionResultService.java     # Result aggregation
+│       │               │   ├── auth/                        # Authentication Handlers
+│       │               │   │   ├── AuthenticationService.java      # Environment-specific auth
+│       │               │   │   ├── AuthHandlerFactory.java         # Handler pattern factory
+│       │               │   │   ├── BasicAuthHandler.java           # Basic authentication
+│       │               │   │   ├── BearerTokenHandler.java         # Bearer token auth
+│       │               │   │   ├── OAuth2Handler.java              # OAuth2 client credentials
+│       │               │   │   └── SamlAuthHandler.java            # SAML authentication
+│       │               │   ├── comparison/                  # Response Comparison
+│       │               │   │   ├── ResponseComparisonService.java  # Main comparison orchestrator
+│       │               │   │   ├── JsonComparatorService.java      # JSON deep comparison
+│       │               │   │   ├── ComparisonConfigService.java    # Settings-driven config
+│       │               │   │   ├── DifferenceAnalyzerService.java  # Analyze differences
+│       │               │   │   └── DifferenceFormatterService.java # Human-readable output
+│       │               │   └── proxy/                       # CORS Proxy
+│       │               │       ├── ApiProxyService.java            # Proxy API calls
+│       │               │       └── RequestForwardingService.java   # Request forwarding
+│       │               ├── component/                 # Spring Components & Storage
+│       │               │   ├── storage/                     # In-Memory Storage
+│       │               │   │   ├── InMemoryTestSuiteStore.java     # Multi-suite storage
+│       │               │   │   ├── InMemoryExecutionStore.java     # Execution state storage
+│       │               │   │   ├── InMemoryProgressStore.java      # Progress tracking storage
+│       │               │   │   └── MemoryCleanupService.java       # Cleanup old data
+│       │               │   └── scheduler/
+│       │               │       └── CleanupScheduler.java           # Scheduled cleanup tasks
+│       │               ├── model/                     # Data Models
+│       │               │   ├── dto/                         # Data Transfer Objects
+│       │               │   │   ├── TestSuiteDto.java               # Complete test suite
+│       │               │   │   ├── TestCaseDto.java                # Individual test case
+│       │               │   │   ├── SettingsDto.java                # Tab 1: Settings
+│       │               │   │   ├── EnvironmentDto.java             # Tab 2: Environment Setting
+│       │               │   │   ├── AuthProfileDto.java             # Tab 3: Auth Profiles
+│       │               │   │   ├── ExecutionResultDto.java         # Test execution result
+│       │               │   │   ├── ExecutionProgress.java          # Real-time progress
+│       │               │   │   ├── ExecutionStateDto.java          # Suite execution state
+│       │               │   │   ├── ComparisonResultDto.java        # Comparison outcome
+│       │               │   │   ├── ComparisonConfig.java           # Comparison configuration
+│       │               │   │   ├── HttpResponseDto.java            # HTTP response wrapper
+│       │               │   │   ├── TestSuiteOverviewDto.java       # Suite overview for listing
+│       │               │   │   ├── DifferenceDto.java              # Individual difference details
+│       │               │   │   ├── ExecutionLogDto.java            # Execution logging
+│       │               │   │   ├── SystemStatusDto.java            # System health monitoring
+│       │               │   │   ├── ExcelTabDataDto.java            # Excel processing metadata
+│       │               │   │   ├── ImportSummaryDto.java           # Import operation summary
+│       │               │   │   └── ComparisonSummaryDto.java       # Overall comparison statistics
+│       │               │   ├── request/                     # Request Models
+│       │               │   │   ├── ExecutionRequest.java           # Start execution request
+│       │               │   │   ├── PauseRequest.java               # Pause execution request
+│       │               │   │   ├── ResumeRequest.java              # Resume execution request
+│       │               │   │   ├── ImportRequest.java              # Import file request
+│       │               │   │   ├── TestCaseRequest.java            # Manual test case creation
+│       │               │   │   ├── ProxyRequest.java               # Proxy API call request
+│       │               │   │   └── ExportRequest.java              # Export request
+│       │               │   ├── response/                    # Response Models
+│       │               │   │   ├── ExecutionResponse.java          # Execution start response
+│       │               │   │   ├── ProgressResponse.java           # Progress update response
+│       │               │   │   ├── ImportResponse.java             # Import result response
+│       │               │   │   ├── ApiResponseWrapper.java         # Generic API response wrapper
+│       │               │   │   ├── ExportResponse.java             # Excel export response
+│       │               │   │   ├── ValidationResponse.java         # Validation results
+│       │               │   │   └── ProxyResponse.java              # Proxy call results
+│       │               │   └── enums/                       # Enumerations
+│       │               │       ├── AuthType.java                   # NONE, BASIC, BEARER, OAUTH2, SAML
+│       │               │       ├── ExecutionMode.java              # PARALLEL, SOURCE_FIRST
+│       │               │       ├── ExecutionState.java             # NOT_STARTED, RUNNING, PAUSED, COMPLETED, FAILED
+│       │               │       ├── TestStatus.java                 # PENDING, PASSED, FAILED, ERROR
+│       │               │       ├── HttpMethod.java                 # GET, POST, PUT, DELETE
+│       │               │       ├── EnvironmentType.java            # SOURCE, TARGET
+│       │               │       └── ImportSourceType.java           # EXCEL, HAR, POSTMAN, SWAGGER
+│       │               ├── util/                      # Utility Classes
+│       │               │   ├── JsonUtils.java                      # JSON manipulation utilities
+│       │               │   ├── Utils.java                          # common utilities
+│       │               │   ├── ExcelUtils.java                     # Excel file utilities
+│       │               │   ├── HttpUtils.java                      # HTTP request utilities
+│       │               │   ├── ValidationUtils.java                # Input validation utilities
+│       │               │   ├── FileUtils.java                      # File processing utilities
+│       │               │   ├── ComparisonUtils.java                # Response comparison utilities
+│       │               │   └── ProgressUtils.java                  # Progress calculation utilities
+│       │               └── exception/                 # Exception Handling
+│       │                   ├── GlobalExceptionHandler.java         # Global exception handler
+│       │                   ├── ApiComparisonException.java         # Base exception
+│       │                   ├── ExcelProcessingException.java       # Excel processing errors
+│       │                   ├── ImportException.java                # Import errors
+│       │                   ├── ExecutionException.java             # Execution errors
+│       │                   ├── ValidationException.java            # Validation errors
+│       │                   ├── AuthenticationException.java        # Auth errors
+│       │                   └── ComparisonException.java            # Comparison errors
+│       └── resources/
+│           ├── application.properties                 # Application configuration
+│           ├── static/                               # Frontend Resources
+│           │   ├── css/
+│           │   │   ├── main.css                             # Main application styles
+│           │   │   ├── components.css                       # Component-specific styles
+│           │   │   ├── suite-management.css                 # Test suite management UI
+│           │   │   ├── execution-monitor.css                # Execution monitoring UI
+│           │   │   ├── progress-tracking.css                # Progress indicators
+│           │   │   └── results-viewer.css                   # Results viewing UI
+│           │   ├── js/
+│           │   │   ├── main.js                              # Main application logic
+│           │   │   ├── components/                          # UI Components
+│           │   │   │   ├── testSuiteManager.js                  # Multi-suite management
+│           │   │   │   ├── executionMonitor.js                  # Real-time execution monitoring
+│           │   │   │   ├── progressTracker.js                   # Progress visualization
+│           │   │   │   ├── resultsViewer.js                     # Results display
+│           │   │   │   ├── comparisonViewer.js                  # Difference visualization
+│           │   │   │   ├── fileUploader.js                      # File upload handling
+│           │   │   │   ├── importManager.js                     # Import source management
+│           │   │   │   ├── environmentManager.js                # Environment configuration
+│           │   │   │   ├── authProfileManager.js                # Auth profile management
+│           │   │   │   ├── settingsManager.js                   # Settings configuration
+│           │   │   │   └── testCaseEditor.js                    # Test case editing
+│           │   │   ├── services/                            # Frontend Services
+│           │   │   │   ├── apiService.js                        # Backend API communication
+│           │   │   │   ├── executionService.js                  # Execution control
+│           │   │   │   ├── progressService.js                   # Progress polling
+│           │   │   │   ├── excelService.js                      # Excel processing
+│           │   │   │   ├── importService.js                     # Import handling
+│           │   │   │   ├── exportService.js                     # Export handling
+│           │   │   │   ├── validationService.js                 # Client-side validation
+│           │   │   │   └── storageService.js                    # Local storage management
+│           │   │   └── utils/                               # Frontend Utilities
+│           │   │       ├── domUtils.js                          # DOM manipulation
+│           │   │       ├── formatUtils.js                       # Data formatting
+│           │   │       ├── progressUtils.js                     # Progress calculations
+│           │   │       ├── validationUtils.js                   # Input validation
+│           │   │       ├── constants.js                         # Frontend constants
+│           │   │       └── eventUtils.js                        # Event handling
+│           │   ├── img/                              # Images only
+│           │   │   └── logo.png
+│           │   └── lib/                              # Third-party libraries
+│           │       ├── bootstrap.min.css
+│           │       ├── bootstrap.min.js
+│           │       └── font-awesome.min.css
+│           ├── templates/                            # HTML templates
+│           │   ├── index.html                              # Main single-page application
+│           │   └── fragments/                              # Reusable HTML fragments
+│           │       ├── header.html
+│           │       ├── navigation.html
+│           │       ├── suite-list.html
+│           │       ├── execution-monitor.html
+│           │       ├── progress-panel.html
+│           │       ├── results-panel.html
+│           │       └── footer.html
+│           ├── samples/                              # Sample files
+│           │   ├── API_Comparison_Test_Suite_Template.xlsx      # 4-tab Excel template
+│           │   ├── sample_postman_collection.json              # Postman import sample
+│           │   ├── sample_swagger.json                         # Swagger import sample
+│           │   ├── sample_har_file.har                         # HAR import sample
+│           │   └── sample_test_results.xlsx                    # Example with results
+│           └── logback-spring.xml                    # Logging configuration
+Key Structure Changes:
+1. Multi-Suite Support
+
+TestSuiteService.java - Manages multiple concurrent test suites
+TestSuiteStateService.java - Tracks execution states per suite
+InMemoryTestSuiteStore.java - Storage for multiple suites
+
+2. Real-Time Execution Monitoring
+
+ExecutionController.java - Start/Pause/Resume/Progress endpoints
+ProgressTrackingService.js - Frontend progress polling
+ExecutionMonitor.js - Real-time UI updates
+
+3. 4-Tab Excel Processing
+
+Separate processors for each Excel tab
+ExcelExportService.java - Integrates results back to Excel
+Settings-driven comparison configuration
+
+4. Environment-Specific Authentication
+
+AuthHandlerFactory.java - Factory pattern for auth types
+Support for different auth per environment (source vs target)
+
+5. Import Source Management
+
+ImportServiceFactory.java - Handle multiple import formats
+Dedicated services for HAR, Postman, Swagger imports
+
+6. Enhanced Frontend Structure
+
+Component-based architecture for multi-suite management
+Real-time progress tracking services
+Modular UI components for each major feature
+
+This structure supports concurrent multi-suite execution with real-time progress monitoring while maintaining the Excel-centric workflow for API migration verification.

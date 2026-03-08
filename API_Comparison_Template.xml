@@ -1,0 +1,422 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testSuite>
+  <settings>
+    <suiteName>User API Regression Tests</suiteName>
+    <description>Test suite for User Management APIs during v2.0 migration</description>
+    <version>1.0</version>
+    <createdBy>john.doe@company.com</createdBy>
+    <createdDate>2025-01-15</createdDate>
+    <lastUpdatedBy>jane.smith@company.com</lastUpdatedBy>
+    <lastUpdatedDate>2025-01-20</lastUpdatedDate>
+    <executionConfig>
+      <mode>parallel</mode>
+      <timeout>30</timeout>
+      <parallelLimit>10</parallelLimit>
+      <delayBetweenRequests>100</delayBetweenRequests>
+      <retries>2</retries>
+    </executionConfig>
+    <comparisonConfig>
+      <caseSensitive>true</caseSensitive>
+      <ignoreArrayOrder>false</ignoreArrayOrder>
+      <numericTolerance>0.001</numericTolerance>
+      <ignoreFields>timestamp,requestId,executionTime</ignoreFields>
+    </comparisonConfig>
+  </settings>
+  <environment>
+    <source url="https://api-legacy.company.com" authProfile="Legacy-SAML"/>
+    <target url="https://api-new.company.com" authProfile="Modern-OAuth2"/>
+    <sourceAuthProfile>Legacy-SAML</sourceAuthProfile>
+    <targetAuthProfile>Modern-OAuth2</targetAuthProfile>
+    <sourceUrl>https://api-legacy.company.com</sourceUrl>
+    <targetUrl>https://api-new.company.com</targetUrl>
+    <defaultHeaders>
+      <defaultHeader name="Content-Type" source="application/json" target="application/json"/>
+      <defaultHeader name="Accept" source="application/json" target="application/json"/>
+      <defaultHeader name="X-API-Version" source="1.0" target="2.0"/>
+      <defaultHeader name="X-Client-Name" source="Legacy-Client" target="Modern-Client"/>
+      <defaultHeader name="X-Environment" source="legacy" target="production"/>
+    </defaultHeaders>
+  </environment>
+  <authProfiles>
+    <authProfile name="Legacy-SAML" description="SAML authentication for legacy environment" tokenUrl="https://sso.company.com/saml/token" username="api-user@company.com" password="********" entityId="legacy-api-entity" type="SAML"/>
+    <authProfile name="Modern-OAuth2" description="OAuth2 for modern environment" tokenUrl="https://auth.company.com/oauth/token" clientId="api-client-v2" clientSecret="********" scope="api:read api:write" type="CLIENT_CREDENTIALS"/>
+    <authProfile name="Admin-Basic" description="Basic auth for admin operations" username="admin" password="admin123" type="BASIC"/>
+    <authProfile name="Public-Bearer" description="Static bearer token for public API" token="public-api-token-12345" type="BEARER"/>
+    <authProfile name="Payment-OAuth2" description="OAuth2 for payment service" tokenUrl="https://payment-auth.company.com/oauth/token" clientId="payment-client" clientSecret="payment-secret" scope="payment:process" additionalConfig="{&quot;audience&quot;: &quot;payment-api&quot;}" type="CLIENT_CREDENTIALS"/>
+    <authProfile name="No-Auth" description="No authentication required" type="NONE"/>
+  </authProfiles>
+  <testGroups>
+    <testGroup name="User APIs" owner="john.doe@company.com">
+      <description>User management API tests for v2.0 migration</description>
+      <testCase id="TC001" name="Get User Profile" enabled="true" method="GET" endpoint="/api/users/12345">
+        <description>Retrieve user profile by user ID</description>
+        <jsonBody/>
+        <headers/>
+        <author>john.doe@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>passed</status>
+          <differences></differences>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>200</targetStatus>
+          <sourceResponse>{"id": 12345, "name": "John Doe", "email": "john@example.com"}</sourceResponse>
+          <targetResponse>{"id": 12345, "name": "John Doe", "email": "john@example.com"}</targetResponse>
+          <executedAt>2025-01-15 10:30:15</executedAt>
+        </result>
+        <queryParams>
+          <queryParam key="include" value="profile"/>
+          <queryParam key="include" value="preferences"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC002" name="Create New User" enabled="true" method="POST" endpoint="/api/users">
+        <description>Create a new user account with validation</description>
+        <jsonBody>{"name": "John Doe", "email": "john.doe@example.com", "role": "user"}</jsonBody>
+        <headers/>
+        <author>jane.smith@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>failed</status>
+          <differences>Response field "created_at" format differs: ISO string vs timestamp</differences>
+          <sourceStatus>201</sourceStatus>
+          <targetStatus>201</targetStatus>
+          <sourceResponse>{"id": 67890, "created_at": "2025-01-15T10:30:15Z"}</sourceResponse>
+          <targetResponse>{"id": 67890, "created_at": 1737024615}</targetResponse>
+          <executedAt>2025-01-15 10:30:17</executedAt>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC003" name="Update User Email" enabled="true" method="PUT" endpoint="/api/users/12345/email">
+        <description>Update user email address</description>
+        <jsonBody>{"email": "newemail@example.com"}</jsonBody>
+        <headers/>
+        <author>mike.wilson@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>passed</status>
+          <differences></differences>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>200</targetStatus>
+          <sourceResponse>{"id": 12345, "email": "newemail@example.com"}</sourceResponse>
+          <targetResponse>{"id": 12345, "email": "newemail@example.com"}</targetResponse>
+          <executedAt>2025-01-15 10:30:19</executedAt>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC004" name="Delete User Account" enabled="true" method="DELETE" endpoint="/api/users/12345">
+        <description>Soft delete user account and associated data</description>
+        <jsonBody/>
+        <headers/>
+        <author>sarah.jones@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>passed</status>
+          <differences></differences>
+          <sourceStatus>204</sourceStatus>
+          <targetStatus>204</targetStatus>
+          <sourceResponse></sourceResponse>
+          <targetResponse></targetResponse>
+          <executedAt>2025-01-15 10:30:21</executedAt>
+        </result>
+        <queryParams>
+          <queryParam key="reason" value="user_request"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC005" name="List Users with Pagination" enabled="true" method="GET" endpoint="/api/users">
+        <description>Get paginated user list with filtering</description>
+        <jsonBody/>
+        <headers/>
+        <author>david.brown@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>failed</status>
+          <differences>Pagination key differs: legacy "total_count" vs new "total"</differences>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>200</targetStatus>
+          <sourceResponse>{"users": [...], "pagination": {"total_count": 150}}</sourceResponse>
+          <targetResponse>{"users": [...], "pagination": {"total": 150}}</targetResponse>
+          <executedAt>2025-01-15 10:30:23</executedAt>
+        </result>
+        <queryParams>
+          <queryParam key="page" value="1"/>
+          <queryParam key="limit" value="10"/>
+          <queryParam key="status" value="active"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+    </testGroup>
+    <testGroup name="Auth APIs" owner="lisa.garcia@company.com">
+      <description>Authentication and session management tests</description>
+      <testCase id="TC001" name="User Login" enabled="true" method="POST" endpoint="/api/auth/login">
+        <description>Authenticate user with email and password</description>
+        <jsonBody>{"email": "user@example.com", "password": "password123"}</jsonBody>
+        <headers/>
+        <author>lisa.garcia@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>error</status>
+          <differences>Target environment returned 500 Internal Server Error</differences>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>500</targetStatus>
+          <sourceResponse>{"token": "jwt.token.here", "expires_in": 3600}</sourceResponse>
+          <targetResponse>{"error": "Internal Server Error"}</targetResponse>
+          <executedAt>2025-01-15 10:30:25</executedAt>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC002" name="User Registration (Form)" enabled="true" method="POST" endpoint="/api/auth/register">
+        <description>Register new user with form-encoded data</description>
+        <jsonBody/>
+        <headers/>
+        <author>michelle.thomas@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams>
+          <formParam key="username" value="newuser"/>
+          <formParam key="email" value="newuser@example.com"/>
+          <formParam key="password" value="password123"/>
+        </formParams>
+      </testCase>
+      <testCase id="TC003" name="Token Refresh" enabled="true" method="POST" endpoint="/api/auth/refresh">
+        <description>Refresh access token using refresh token</description>
+        <jsonBody>{"refresh_token": "refresh.token.here"}</jsonBody>
+        <headers/>
+        <author>lisa.garcia@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC004" name="Logout" enabled="true" method="POST" endpoint="/api/auth/logout">
+        <description>Invalidate current user session</description>
+        <jsonBody/>
+        <headers/>
+        <author>lisa.garcia@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+    </testGroup>
+    <testGroup name="Order APIs" owner="robert.taylor@company.com">
+      <description>Order management and fulfillment API tests</description>
+      <testCase id="TC001" name="Get Order Details" enabled="true" method="GET" endpoint="/api/orders/ORD-12345">
+        <description>Retrieve detailed order information</description>
+        <jsonBody/>
+        <headers/>
+        <author>robert.taylor@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>passed</status>
+          <differences></differences>
+          <sourceStatus>200</sourceStatus>
+          <targetStatus>200</targetStatus>
+          <sourceResponse>{"orderId": "ORD-12345", "status": "confirmed"}</sourceResponse>
+          <targetResponse>{"orderId": "ORD-12345", "status": "confirmed"}</targetResponse>
+          <executedAt>2025-01-15 10:30:27</executedAt>
+        </result>
+        <queryParams>
+          <queryParam key="include" value="items"/>
+          <queryParam key="include" value="customer"/>
+          <queryParam key="include" value="shipping"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC002" name="List Orders" enabled="true" method="GET" endpoint="/api/orders">
+        <description>Get paginated order list for a user</description>
+        <jsonBody/>
+        <headers/>
+        <author>robert.taylor@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams>
+          <queryParam key="userId" value="12345"/>
+          <queryParam key="page" value="1"/>
+          <queryParam key="limit" value="20"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC003" name="Cancel Order" enabled="true" method="PATCH" endpoint="/api/orders/ORD-12345/cancel">
+        <description>Cancel an existing order</description>
+        <jsonBody>{"reason": "customer_request"}</jsonBody>
+        <headers/>
+        <author>robert.taylor@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+    </testGroup>
+    <testGroup name="Payment APIs" owner="anna.martinez@company.com">
+      <description>Payment processing and refund API tests (disabled by default)</description>
+      <testCase id="TC001" name="Process Payment" enabled="false" method="POST" endpoint="/api/payments">
+        <description>Process payment for an order</description>
+        <jsonBody>{"orderId": "ORD-12345", "amount": 99.99, "currency": "USD"}</jsonBody>
+        <headers/>
+        <author>anna.martinez@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC002" name="Get Payment Status" enabled="true" method="GET" endpoint="/api/payments/PAY-99999">
+        <description>Check payment status by payment ID</description>
+        <jsonBody/>
+        <headers/>
+        <author>anna.martinez@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+      <testCase id="TC003" name="Refund Payment" enabled="false" method="POST" endpoint="/api/payments/PAY-99999/refund">
+        <description>Process full or partial refund</description>
+        <jsonBody>{"amount": 50.00, "reason": "partial_return"}</jsonBody>
+        <headers/>
+        <author>anna.martinez@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams/>
+        <formParams/>
+      </testCase>
+    </testGroup>
+    <testGroup name="Product APIs" owner="chris.anderson@company.com">
+      <description>Product catalog and search API tests</description>
+      <testCase id="TC001" name="Get Product Catalog" enabled="true" method="GET" endpoint="/api/products">
+        <description>Retrieve products with filtering and sorting</description>
+        <jsonBody/>
+        <headers/>
+        <author>chris.anderson@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams>
+          <queryParam key="category" value="electronics"/>
+          <queryParam key="limit" value="50"/>
+          <queryParam key="sort" value="price"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC002" name="Get Product Detail" enabled="true" method="GET" endpoint="/api/products/PROD-555">
+        <description>Retrieve single product by ID</description>
+        <jsonBody/>
+        <headers/>
+        <author>chris.anderson@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams>
+          <queryParam key="include" value="inventory"/>
+          <queryParam key="include" value="images"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+      <testCase id="TC003" name="Search Products" enabled="true" method="GET" endpoint="/api/products/search">
+        <description>Full-text search across product catalog</description>
+        <jsonBody/>
+        <headers/>
+        <author>chris.anderson@company.com</author>
+        <comparisonConfig/>
+        <result>
+          <status>pending</status>
+          <differences/>
+          <sourceStatus/>
+          <targetStatus/>
+          <sourceResponse/>
+          <targetResponse/>
+          <executedAt/>
+        </result>
+        <queryParams>
+          <queryParam key="q" value="laptop"/>
+          <queryParam key="brand" value="Dell"/>
+          <queryParam key="minPrice" value="500"/>
+          <queryParam key="maxPrice" value="2000"/>
+        </queryParams>
+        <formParams/>
+      </testCase>
+    </testGroup>
+  </testGroups>
+</testSuite>
