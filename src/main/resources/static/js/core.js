@@ -89,46 +89,48 @@ async function importSuiteFile(file) {
 
 // ─── Full-page drag & drop ────────────────────────────────────────────────────
 (function () {
-  let dragCounter = 0;
-  const overlay = () => document.getElementById('dropOverlay');
-  const onLanding = () => document.getElementById('landing')?.classList.contains('active');
+  const getOverlay = () => document.getElementById('dropOverlay');
+  const onLanding  = () => !!document.getElementById('landing')?.classList.contains('active');
 
+  // Show overlay when drag enters document — only on landing page
   document.addEventListener('dragenter', e => {
-    e.preventDefault();
-    // Only show overlay on landing page
     if (!onLanding()) return;
-    dragCounter++;
-    if (dragCounter === 1) overlay().style.display = 'block';
-  });
-
-  document.addEventListener('dragleave', e => {
     e.preventDefault();
-    if (!onLanding()) return;
-    dragCounter--;
-    if (dragCounter <= 0) { dragCounter = 0; overlay().style.display = 'none'; }
+    getOverlay().style.display = 'block';
   });
 
-  document.addEventListener('dragover', e => {
-    e.preventDefault(); // required to allow drop
-  });
-
-  document.addEventListener('drop', async e => {
-    e.preventDefault();
-    dragCounter = 0;
-    overlay().style.display = 'none';
-
-    if (!onLanding()) return;
-
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!['xlsx', 'xls', 'xml'].includes(ext)) {
-      toast('Please drop an Excel (.xlsx) or XML file', true);
-      return;
-    }
-    await importSuiteFile(file);
-  });
+  // Keep browser from navigating/downloading on any drop outside overlay
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop',     e => e.preventDefault());
 })();
+
+function handleOverlayLeave(e) {
+  // Only hide if leaving to outside the overlay itself (relatedTarget outside)
+  if (!e.relatedTarget || !document.getElementById('dropOverlay').contains(e.relatedTarget)) {
+    document.getElementById('dropOverlay').style.display = 'none';
+  }
+}
+
+async function handleOverlayDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropOverlay').style.display = 'none';
+
+  // Try dataTransfer.files first, fall back to items (Chrome download bar uses items)
+  let file = e.dataTransfer?.files?.[0];
+  if (!file && e.dataTransfer?.items?.length > 0) {
+    for (const item of e.dataTransfer.items) {
+      if (item.kind === 'file') { file = item.getAsFile(); break; }
+    }
+  }
+
+  if (!file) { toast('No file detected', true); return; }
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx', 'xls', 'xml'].includes(ext)) {
+    toast('Please drop an Excel (.xlsx) or XML file', true);
+    return;
+  }
+  await importSuiteFile(file);
+}
 
 async function createSuite() {
   const name = g('cm-name');

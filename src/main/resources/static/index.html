@@ -395,9 +395,13 @@
   </div>
 </div>
 
-<!-- Full-page drop overlay -->
-<div id="dropOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(37,99,235,0.15);backdrop-filter:blur(2px);pointer-events:none">
-  <div style="position:absolute;inset:40px;border:3px dashed #2563eb;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+<!-- Full-page drop overlay — actual drop target, not just visual -->
+<div id="dropOverlay"
+     style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(37,99,235,0.15);backdrop-filter:blur(2px);pointer-events:all"
+     ondragover="event.preventDefault(); event.dataTransfer.dropEffect='copy';"
+     ondragleave="handleOverlayLeave(event)"
+     ondrop="handleOverlayDrop(event)">
+  <div style="position:absolute;inset:40px;border:3px dashed #2563eb;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none">
     <div style="font-size:56px">📂</div>
     <div style="font-size:22px;font-weight:700;color:#1d4ed8">Drop to Import Suite</div>
     <div style="font-size:14px;color:#3b82f6">.xlsx or .xml</div>
