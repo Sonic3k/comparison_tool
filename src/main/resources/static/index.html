@@ -168,6 +168,27 @@
           <button class="btn btn-primary btn-sm" onclick="openImportGroupModal()">+ Add Group</button>
         </div>
       </div>
+
+      <!-- Suite Results Summary — shown when any TC has been executed -->
+      <div id="suiteSummaryBar" style="display:none;background:#f8fafc;border:1px solid var(--gray-border);border-radius:10px;padding:14px 18px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;font-size:13px;color:#374151">📊 Suite Results</span>
+          <span id="summaryPassRate" style="font-size:13px;font-weight:700;color:#059669"></span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <div class="sum-pill sum-total"  id="sum-total" ><span class="sum-n" id="sn-total"></span><span class="sum-l">Total</span></div>
+          <div class="sum-pill sum-pass"   id="sum-pass"  ><span class="sum-n" id="sn-pass"></span><span class="sum-l">Passed</span></div>
+          <div class="sum-pill sum-fail"   id="sum-fail"  ><span class="sum-n" id="sn-fail"></span><span class="sum-l">Failed</span></div>
+          <div class="sum-pill sum-error"  id="sum-error" ><span class="sum-n" id="sn-error"></span><span class="sum-l">Error</span></div>
+          <div class="sum-pill sum-pend"   id="sum-pend"  ><span class="sum-n" id="sn-pend"></span><span class="sum-l">Pending</span></div>
+        </div>
+        <div style="background:#e5e7eb;border-radius:999px;height:8px;overflow:hidden;display:flex">
+          <div id="bar-pass"  style="background:#10b981;height:100%;transition:width .4s"></div>
+          <div id="bar-fail"  style="background:#ef4444;height:100%;transition:width .4s"></div>
+          <div id="bar-error" style="background:#f97316;height:100%;transition:width .4s"></div>
+        </div>
+      </div>
+
       <div class="group-grid" id="groupGrid"></div>
     </div>
 

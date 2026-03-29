@@ -201,3 +201,12 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 
 /* ─── Coming soon badge ──────────────────────────────────────── */
 .badge-soon { display: inline-block; font-size: 9px; font-weight: 700; background: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 5px; margin-left: 5px; vertical-align: middle; text-transform: uppercase; letter-spacing: .04em; }
+/* ─── Suite Summary Bar ──────────────────────────────────────── */
+.sum-pill { display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:8px; font-size:13px; }
+.sum-n    { font-weight:700; font-size:18px; }
+.sum-l    { font-weight:500; color:#6b7280; font-size:12px; }
+.sum-total { background:#f3f4f6; }
+.sum-pass  { background:#d1fae5; } .sum-pass .sum-n  { color:#059669; }
+.sum-fail  { background:#fee2e2; } .sum-fail .sum-n  { color:#dc2626; }
+.sum-error { background:#ffedd5; } .sum-error .sum-n { color:#ea580c; }
+.sum-pend  { background:#f3f4f6; } .sum-pend .sum-n  { color:#9ca3af; }

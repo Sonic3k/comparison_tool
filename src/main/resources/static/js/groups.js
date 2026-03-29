@@ -49,6 +49,43 @@ function renderGroupGrid(groups) {
       <div class="plus">＋</div>
       <div style="font-size:13px;font-weight:500">Add Test Group</div>
     </div>`;
+
+  renderSuiteSummary(suite?.testGroups || []);
+}
+
+function renderSuiteSummary(groups) {
+  const bar = document.getElementById('suiteSummaryBar');
+  if (!bar) return;
+
+  let total = 0, passed = 0, failed = 0, error = 0;
+  for (const grp of groups) {
+    for (const tc of (grp.testCases || [])) {
+      if (tc.enabled === false) continue;
+      total++;
+      const s = tc.result?.status;
+      if (s === 'passed')      passed++;
+      else if (s === 'failed') failed++;
+      else if (s === 'error')  error++;
+    }
+  }
+
+  const executed = passed + failed + error;
+  if (executed === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+
+  const pending = total - executed;
+  const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
+
+  document.getElementById('sn-total').textContent = total;
+  document.getElementById('sn-pass').textContent  = passed;
+  document.getElementById('sn-fail').textContent  = failed;
+  document.getElementById('sn-error').textContent = error;
+  document.getElementById('sn-pend').textContent  = pending;
+  document.getElementById('summaryPassRate').textContent = `${passRate}% pass rate`;
+
+  document.getElementById('bar-pass').style.width  = (passed / total * 100) + '%';
+  document.getElementById('bar-fail').style.width  = (failed / total * 100) + '%';
+  document.getElementById('bar-error').style.width = (error  / total * 100) + '%';
 }
 
 // ─── Group Toggle ─────────────────────────────────────────────────────────────
