@@ -29,13 +29,17 @@
 <!-- ─── Landing ──────────────────────────────────────────────────────────── -->
 <div id="landing" class="page active">
   <div class="landing-cards">
-    <div class="lcard">
+    <div class="lcard" id="importDropZone"
+         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleSuiteDrop(event)">
       <div class="lcard-icon">📂</div>
       <h2>Import Suite</h2>
       <p>Upload an existing test suite from Excel (.xlsx) or XML file.</p>
-      <label class="btn btn-primary" style="justify-content:center;margin-top:20px;cursor:pointer;width:100%">
+      <p style="font-size:12px;color:var(--gray-text);margin-top:4px">— or drag & drop a file anywhere on this card —</p>
+      <label class="btn btn-primary" style="justify-content:center;margin-top:16px;cursor:pointer;width:100%">
         📁 Choose File
-        <input type="file" accept=".xlsx,.xls,.xml" style="display:none" onchange="importFile(this)">
+        <input type="file" id="importFileInput" accept=".xlsx,.xls,.xml" style="display:none" onchange="importFile(this)">
       </label>
     </div>
     <div class="lcard" onclick="openModal('createModal')">

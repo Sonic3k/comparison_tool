@@ -68,6 +68,23 @@ document.addEventListener('click', e => {
 async function importFile(input) {
   const file = input.files[0];
   if (!file) return;
+  await importSuiteFile(file);
+}
+
+async function handleSuiteDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx','xls','xml'].includes(ext)) {
+    toast('Please drop an Excel (.xlsx) or XML file', true);
+    return;
+  }
+  await importSuiteFile(file);
+}
+
+async function importSuiteFile(file) {
   const res = await uploadFile(file);
   if (res.success) {
     suite = res.data;
