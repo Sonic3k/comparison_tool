@@ -72,22 +72,8 @@ async function importFile(input) {
 }
 
 async function handleSuiteDrop(event) {
-  event.preventDefault();
-  event.stopPropagation();
-  event.currentTarget.classList.remove('drag-over');
-  const file = event.dataTransfer.files[0];
-  if (!file) return;
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (!['xlsx','xls','xml'].includes(ext)) {
-    toast('Please drop an Excel (.xlsx) or XML file', true);
-    return;
-  }
-  await importSuiteFile(file);
+  // kept for backwards compat but logic now handled by document-level handler
 }
-
-// Prevent browser from opening/downloading dropped files at document level
-document.addEventListener('dragover',  e => e.preventDefault());
-document.addEventListener('drop',      e => e.preventDefault());
 
 async function importSuiteFile(file) {
   const res = await uploadFile(file);
@@ -100,6 +86,49 @@ async function importSuiteFile(file) {
     alert('Import failed: ' + res.message);
   }
 }
+
+// ─── Full-page drag & drop ────────────────────────────────────────────────────
+(function () {
+  let dragCounter = 0;
+  const overlay = () => document.getElementById('dropOverlay');
+  const onLanding = () => document.getElementById('landing')?.classList.contains('active');
+
+  document.addEventListener('dragenter', e => {
+    e.preventDefault();
+    // Only show overlay on landing page
+    if (!onLanding()) return;
+    dragCounter++;
+    if (dragCounter === 1) overlay().style.display = 'block';
+  });
+
+  document.addEventListener('dragleave', e => {
+    e.preventDefault();
+    if (!onLanding()) return;
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; overlay().style.display = 'none'; }
+  });
+
+  document.addEventListener('dragover', e => {
+    e.preventDefault(); // required to allow drop
+  });
+
+  document.addEventListener('drop', async e => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay().style.display = 'none';
+
+    if (!onLanding()) return;
+
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'xml'].includes(ext)) {
+      toast('Please drop an Excel (.xlsx) or XML file', true);
+      return;
+    }
+    await importSuiteFile(file);
+  });
+})();
 
 async function createSuite() {
   const name = g('cm-name');

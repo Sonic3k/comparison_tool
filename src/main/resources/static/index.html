@@ -29,14 +29,11 @@
 <!-- ─── Landing ──────────────────────────────────────────────────────────── -->
 <div id="landing" class="page active">
   <div class="landing-cards">
-    <div class="lcard" id="importDropZone"
-         ondragover="event.preventDefault(); this.classList.add('drag-over')"
-         ondragleave="this.classList.remove('drag-over')"
-         ondrop="handleSuiteDrop(event)">
+    <div class="lcard">
       <div class="lcard-icon">📂</div>
       <h2>Import Suite</h2>
       <p>Upload an existing test suite from Excel (.xlsx) or XML file.</p>
-      <p style="font-size:12px;color:var(--gray-text);margin-top:4px">— or drag & drop a file anywhere on this card —</p>
+      <p style="font-size:12px;color:var(--gray-text);margin-top:4px">— or drag & drop anywhere on the page —</p>
       <label class="btn btn-primary" style="justify-content:center;margin-top:16px;cursor:pointer;width:100%">
         📁 Choose File
         <input type="file" id="importFileInput" accept=".xlsx,.xls,.xml" style="display:none" onchange="importFile(this)">
@@ -395,6 +392,15 @@
         <button class="btn btn-primary" onclick="importGroupXml()">Import Group</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Full-page drop overlay -->
+<div id="dropOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(37,99,235,0.15);backdrop-filter:blur(2px);pointer-events:none">
+  <div style="position:absolute;inset:40px;border:3px dashed #2563eb;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+    <div style="font-size:56px">📂</div>
+    <div style="font-size:22px;font-weight:700;color:#1d4ed8">Drop to Import Suite</div>
+    <div style="font-size:14px;color:#3b82f6">.xlsx or .xml</div>
   </div>
 </div>
 
