@@ -166,7 +166,7 @@ public class ExcelImportService {
             }
         }
 
-        for (int r = 8; r <= sheet.getLastRowNum(); r++) {
+        for (int r = 7; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null || cell(row, 0).isEmpty()) continue;
             group.addTestCase(parseTestCaseRow(row));
