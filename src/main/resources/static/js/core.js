@@ -73,6 +73,7 @@ async function importFile(input) {
 
 async function handleSuiteDrop(event) {
   event.preventDefault();
+  event.stopPropagation();
   event.currentTarget.classList.remove('drag-over');
   const file = event.dataTransfer.files[0];
   if (!file) return;
@@ -83,6 +84,10 @@ async function handleSuiteDrop(event) {
   }
   await importSuiteFile(file);
 }
+
+// Prevent browser from opening/downloading dropped files at document level
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('drop',      e => e.preventDefault());
 
 async function importSuiteFile(file) {
   const res = await uploadFile(file);
