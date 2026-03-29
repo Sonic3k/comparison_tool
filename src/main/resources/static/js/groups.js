@@ -391,7 +391,12 @@ function renderResultsPanel() {
     }
   }
 
-  console.log('[Results]', { total, passed, failed, error, groups: groups.length });
+  // Debug — remove after fix
+  console.log('[Results] groups:', groups.length, 'total:', total, 'pass:', passed, 'fail:', failed, 'err:', error);
+  if (groups[0]?.testCases?.[0]) {
+    const tc0 = groups[0].testCases[0];
+    console.log('[Results] sample TC:', tc0.id, 'result:', JSON.stringify(tc0.result));
+  }
   const executed = passed + failed + error;
   const pending  = total - executed;
   const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
