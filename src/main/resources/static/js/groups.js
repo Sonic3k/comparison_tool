@@ -391,6 +391,7 @@ function renderResultsPanel() {
     }
   }
 
+  console.log('[Results]', { total, passed, failed, error, groups: groups.length });
   const executed = passed + failed + error;
   const pending  = total - executed;
   const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
