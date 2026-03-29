@@ -121,6 +121,8 @@
           <div class="form-group"><label>Ignore Array Order</label>
             <select id="s-ignoreArrayOrder"><option value="false">No</option><option value="true">Yes</option></select></div>
           <div class="form-group"><label>Numeric Tolerance</label><input id="s-tolerance" type="number" step="0.001"/></div>
+          <div class="form-group form-full"><label>Compare Error Responses <span class="form-hint">— when ON: 4xx/5xx are captured and compared; when OFF: 5xx = execution error</span></label>
+            <select id="s-compareErrorResponses"><option value="false">OFF — 5xx treated as error (default)</option><option value="true">ON — capture and compare all responses</option></select></div>
         </div>
       </div>
     </div>
@@ -324,6 +326,8 @@
         <div class="form-group"><label>Ignore Array Order</label>
           <select id="tc-ignoreOrder"><option value="">— global —</option><option value="true">Yes</option><option value="false">No</option></select></div>
         <div class="form-group"><label>Numeric Tolerance</label><input id="tc-tolerance" placeholder="e.g. 0.001"/></div>
+        <div class="form-group form-full"><label>Compare Error Responses</label>
+          <select id="tc-compareErrorResponses"><option value="">— global —</option><option value="true">ON — capture and compare all responses</option><option value="false">OFF — 5xx treated as error</option></select></div>
       </div>
     </div>
     <div class="modal-footer">

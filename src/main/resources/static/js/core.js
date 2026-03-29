@@ -88,7 +88,7 @@ async function createSuite() {
       suiteName: name, description: g('cm-desc'),
       version: g('cm-version') || '1.0', createdBy: g('cm-author'), createdDate: now,
       executionConfig: { mode: 'PARALLEL', timeout: 30, parallelLimit: 10, delayBetweenRequests: 100, retries: 2 },
-      comparisonConfig: { ignoreFieldsRaw: '', caseSensitive: true, ignoreArrayOrder: false, numericTolerance: 0.001 }
+      comparisonConfig: { ignoreFieldsRaw: '', caseSensitive: true, ignoreArrayOrder: false, numericTolerance: 0.001, compareErrorResponses: false }
     },
     environments: [], authProfiles: [], testGroups: []
   });
@@ -132,6 +132,7 @@ function renderSuite() {
   sv('s-caseSensitive', String(cc.caseSensitive !== false));
   sv('s-ignoreArrayOrder', String(!!cc.ignoreArrayOrder));
   sv('s-tolerance', cc.numericTolerance);
+  sv('s-compareErrorResponses', String(!!cc.compareErrorResponses));
 
   // Config panels
   renderEnvTable(suite.environments || []);

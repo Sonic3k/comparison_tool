@@ -66,6 +66,7 @@ public class ExcelImportService {
                 case "Case Sensitive"         -> cmp.setCaseSensitive(Boolean.parseBoolean(value));
                 case "Ignore Array Order"     -> cmp.setIgnoreArrayOrder(Boolean.parseBoolean(value));
                 case "Numeric Tolerance"      -> cmp.setNumericTolerance(parseDouble(value, 0.001));
+                case "Compare Error Responses"-> cmp.setCompareErrorResponses(Boolean.parseBoolean(value));
             }
         }
         s.setExecutionConfig(exec);
@@ -192,25 +193,28 @@ public class ExcelImportService {
         String caseSens     = cell(row, 12);
         String ignoreOrder  = cell(row, 13);
         String numTol       = cell(row, 14);
-        if (!ignoreFields.isEmpty() || !caseSens.isEmpty() || !ignoreOrder.isEmpty() || !numTol.isEmpty()) {
+        String cmpErrors    = cell(row, 15);
+        if (!ignoreFields.isEmpty() || !caseSens.isEmpty() || !ignoreOrder.isEmpty()
+                || !numTol.isEmpty() || !cmpErrors.isEmpty()) {
             ComparisonConfig cmp = new ComparisonConfig();
             cmp.setIgnoreFieldsRaw(ignoreFields);
             if (!caseSens.isEmpty())    cmp.setCaseSensitive(Boolean.parseBoolean(caseSens));
             if (!ignoreOrder.isEmpty()) cmp.setIgnoreArrayOrder(Boolean.parseBoolean(ignoreOrder));
             if (!numTol.isEmpty())      cmp.setNumericTolerance(parseDouble(numTol, 0.001));
+            if (!cmpErrors.isEmpty())   cmp.setCompareErrorResponses(Boolean.parseBoolean(cmpErrors));
             tc.setComparisonConfig(cmp);
         }
 
-        String status = cell(row, 15);
+        String status = cell(row, 16);
         if (!status.isEmpty()) {
             TestResult result = new TestResult();
             result.setStatus(parseEnum(ExecutionStatus.class, status.toUpperCase(), ExecutionStatus.PENDING));
-            result.setDifferences(cell(row, 16));
-            result.setSourceStatus(cell(row, 17));
-            result.setTargetStatus(cell(row, 18));
-            result.setSourceResponse(cell(row, 19));
-            result.setTargetResponse(cell(row, 20));
-            result.setExecutedAt(cell(row, 21));
+            result.setDifferences(cell(row, 17));
+            result.setSourceStatus(cell(row, 18));
+            result.setTargetStatus(cell(row, 19));
+            result.setSourceResponse(cell(row, 20));
+            result.setTargetResponse(cell(row, 21));
+            result.setExecutedAt(cell(row, 22));
             tc.setResult(result);
         }
         return tc;

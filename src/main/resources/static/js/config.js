@@ -13,7 +13,8 @@ async function saveSettings() {
       ignoreFieldsRaw: g('s-ignoreFields'),
       caseSensitive: g('s-caseSensitive') === 'true',
       ignoreArrayOrder: g('s-ignoreArrayOrder') === 'true',
-      numericTolerance: +g('s-tolerance')
+      numericTolerance: +g('s-tolerance'),
+      compareErrorResponses: g('s-compareErrorResponses') === 'true'
     }
   });
   if (res.success) { suite.settings = res.data; toast('Settings saved'); }

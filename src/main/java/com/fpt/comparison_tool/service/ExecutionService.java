@@ -105,6 +105,23 @@ public class ExecutionService {
             String srcBody = sourceResp.getBody();
             String tgtBody = targetResp.getBody();
 
+            // If compareErrorResponses=false (default): treat any 5xx as ERROR
+            // — server is broken, comparison result would be meaningless
+            if (!cmp.isCompareErrorResponses()) {
+                boolean srcServerError = srcStatus >= 500;
+                boolean tgtServerError = tgtStatus >= 500;
+                if (srcServerError || tgtServerError) {
+                    String msg = srcServerError
+                            ? "Source returned " + srcStatus + " — server error, cannot compare"
+                            : "Target returned " + tgtStatus + " — server error, cannot compare";
+                    tc.setResult(new TestResult(ExecutionStatus.ERROR, msg,
+                            String.valueOf(srcStatus), String.valueOf(tgtStatus),
+                            srcBody, tgtBody, LocalDateTime.now().format(TIMESTAMP_FMT)));
+                    progress.recordError(group.getName(), tc.getId());
+                    return;
+                }
+            }
+
             List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
             ExecutionStatus status = diffs.isEmpty() ? ExecutionStatus.PASSED : ExecutionStatus.FAILED;
 
@@ -202,8 +219,23 @@ public class ExecutionService {
     }
 
     private ComparisonConfig resolveComparison(TestCase tc, TestSuite suite) {
-        return tc.getComparisonConfig() != null
-                ? tc.getComparisonConfig()
-                : suite.getSettings().getComparisonConfig();
+        ComparisonConfig global = suite.getSettings().getComparisonConfig();
+        ComparisonConfig override = tc.getComparisonConfig();
+        if (override == null) return global;
+
+        // Merge: TC override wins for fields that are explicitly set, else fall back to global
+        ComparisonConfig merged = new ComparisonConfig();
+        merged.setIgnoreFieldsRaw(
+            override.getIgnoreFieldsRaw() != null && !override.getIgnoreFieldsRaw().isBlank()
+                ? override.getIgnoreFieldsRaw() : global.getIgnoreFieldsRaw());
+        merged.setCaseSensitive(override.isCaseSensitive());
+        merged.setIgnoreArrayOrder(override.isIgnoreArrayOrder());
+        merged.setNumericTolerance(override.getNumericTolerance() > 0
+                ? override.getNumericTolerance() : global.getNumericTolerance());
+        // compareErrorResponses: TC override only applies if explicitly set (non-null from JSON)
+        // Since boolean defaults to false, we check via Jackson's deserialization —
+        // but to be safe, treat TC override as authoritative only if TC config is present
+        merged.setCompareErrorResponses(override.isCompareErrorResponses());
+        return merged;
     }
 }

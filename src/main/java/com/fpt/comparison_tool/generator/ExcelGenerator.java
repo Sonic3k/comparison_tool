@@ -54,10 +54,11 @@ public class ExcelGenerator {
             { "Execution", "Source Environment",    nvl(ec.getSourceEnvironment()),              "Name of source environment" },
             { "Execution", "Target Environment",    nvl(ec.getTargetEnvironment()),              "Name of target environment" },
             { "", "", "", "" },
-            { "Comparison", "Ignore Fields",      nvl(cc.getIgnoreFieldsRaw()),                              "Comma-separated fields to skip" },
-            { "Comparison", "Case Sensitive",     String.valueOf(cc.isCaseSensitive()).toUpperCase(),         "TRUE or FALSE" },
-            { "Comparison", "Ignore Array Order", String.valueOf(cc.isIgnoreArrayOrder()).toUpperCase(),      "TRUE or FALSE" },
-            { "Comparison", "Numeric Tolerance",  String.valueOf(cc.getNumericTolerance()),                   "Tolerance for numeric comparison" },
+            { "Comparison", "Ignore Fields",           nvl(cc.getIgnoreFieldsRaw()),                              "Comma-separated fields to skip" },
+            { "Comparison", "Case Sensitive",           String.valueOf(cc.isCaseSensitive()).toUpperCase(),         "TRUE or FALSE" },
+            { "Comparison", "Ignore Array Order",       String.valueOf(cc.isIgnoreArrayOrder()).toUpperCase(),      "TRUE or FALSE" },
+            { "Comparison", "Numeric Tolerance",        String.valueOf(cc.getNumericTolerance()),                   "Tolerance for numeric comparison" },
+            { "Comparison", "Compare Error Responses",  String.valueOf(cc.isCompareErrorResponses()).toUpperCase(), "FALSE=treat 5xx as error; TRUE=capture and compare 4xx/5xx responses" },
         };
 
         for (int r = 0; r < rows.length; r++) {
@@ -143,7 +144,7 @@ public class ExcelGenerator {
 
     private void writeTestGroupSheet(Workbook wb, TestGroup group, Styles s) {
         Sheet sheet = wb.createSheet("TC - " + group.getName());
-        int totalCols = 22;
+        int totalCols = 23;
 
         // Row 0: group info header
         Row r0 = sheet.createRow(0);
@@ -167,24 +168,24 @@ public class ExcelGenerator {
         setCellStyled(r6, 0,  "TEST CASE DEFINITION",  s.tcHeader);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(6, 6, 0, 10));
         setCellStyled(r6, 11, "COMPARISON OVERRIDE",   s.cmpHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(6, 6, 11, 14));
-        setCellStyled(r6, 15, "EXECUTION RESULTS",     s.resultHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(6, 6, 15, totalCols - 1));
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(6, 6, 11, 15));
+        setCellStyled(r6, 16, "EXECUTION RESULTS",     s.resultHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(6, 6, 16, totalCols - 1));
 
-        // Row 7: column headers (22 cols total)
+        // Row 7: column headers (23 cols total)
         String[] headers = {
             // TEST CASE DEFINITION (0-10)
             "ID", "Name", "Description", "Enabled", "Method", "Endpoint",
             "Query Params", "Form Params", "JSON Body", "Headers", "Author",
-            // COMPARISON OVERRIDE (11-14)
-            "Ignore Fields", "Case Sensitive", "Ignore Array Order", "Numeric Tolerance",
-            // EXECUTION RESULTS (15-21)
+            // COMPARISON OVERRIDE (11-15)
+            "Ignore Fields", "Case Sensitive", "Ignore Array Order", "Numeric Tolerance", "Compare Error Responses",
+            // EXECUTION RESULTS (16-22)
             "Status", "Differences", "Source Status", "Target Status",
             "Source Response", "Target Response", "Executed At"
         };
         Row r7 = sheet.createRow(7);
         for (int i = 0; i < headers.length; i++) {
-            CellStyle cs = i <= 10 ? s.tcHeader : (i <= 14 ? s.cmpHeader : s.resultHeader);
+            CellStyle cs = i <= 10 ? s.tcHeader : (i <= 15 ? s.cmpHeader : s.resultHeader);
             setCellStyled(r7, i, headers[i], cs);
         }
 
@@ -204,26 +205,27 @@ public class ExcelGenerator {
             row.createCell(9).setCellValue(nvl(tc.getHeaders()));
             row.createCell(10).setCellValue(nvl(tc.getAuthor()));
 
-            // Comparison override (cols 11-14)
+            // Comparison override (cols 11-15)
             ComparisonConfig cmp = tc.getComparisonConfig();
             row.createCell(11).setCellValue(cmp != null ? nvl(cmp.getIgnoreFieldsRaw()) : "");
             row.createCell(12).setCellValue(cmp != null ? String.valueOf(cmp.isCaseSensitive()) : "");
             row.createCell(13).setCellValue(cmp != null ? String.valueOf(cmp.isIgnoreArrayOrder()) : "");
             row.createCell(14).setCellValue(cmp != null ? String.valueOf(cmp.getNumericTolerance()) : "");
+            row.createCell(15).setCellValue(cmp != null ? String.valueOf(cmp.isCompareErrorResponses()).toUpperCase() : "");
 
-            // Results (cols 15-21)
+            // Results (cols 16-22)
             TestResult res = tc.getResult();
-            row.createCell(15).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "");
-            row.createCell(16).setCellValue(res != null ? nvl(res.getDifferences()) : "");
-            row.createCell(17).setCellValue(res != null ? nvl(res.getSourceStatus()) : "");
-            row.createCell(18).setCellValue(res != null ? nvl(res.getTargetStatus()) : "");
-            row.createCell(19).setCellValue(res != null ? nvl(res.getSourceResponse()) : "");
-            row.createCell(20).setCellValue(res != null ? nvl(res.getTargetResponse()) : "");
-            row.createCell(21).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
+            row.createCell(16).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "");
+            row.createCell(17).setCellValue(res != null ? nvl(res.getDifferences()) : "");
+            row.createCell(18).setCellValue(res != null ? nvl(res.getSourceStatus()) : "");
+            row.createCell(19).setCellValue(res != null ? nvl(res.getTargetStatus()) : "");
+            row.createCell(20).setCellValue(res != null ? nvl(res.getSourceResponse()) : "");
+            row.createCell(21).setCellValue(res != null ? nvl(res.getTargetResponse()) : "");
+            row.createCell(22).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
         }
 
-        // Column widths
-        int[] widths = { 10, 25, 40, 8, 8, 35, 35, 30, 40, 25, 25, 25, 14, 18, 16, 12, 50, 12, 12, 40, 40, 18 };
+        // Column widths (23 cols)
+        int[] widths = { 10, 25, 40, 8, 8, 35, 35, 30, 40, 25, 25, 25, 14, 18, 16, 22, 12, 50, 12, 12, 40, 40, 18 };
         for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
     }
 
@@ -232,7 +234,7 @@ public class ExcelGenerator {
         setCellStyled(row, 0, label, s.groupLabel);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowIdx, rowIdx, 0, 1));
         setCellStyled(row, 2, nvl(value), s.groupValue);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowIdx, rowIdx, 2, 21));
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowIdx, rowIdx, 2, 22));
     }
 
     // ─── Cell helpers ─────────────────────────────────────────────────────────

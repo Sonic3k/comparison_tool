@@ -222,11 +222,12 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-caseSens',    cmp.caseSensitive   !== undefined ? String(cmp.caseSensitive)   : '');
     sv('tc-ignoreOrder', cmp.ignoreArrayOrder !== undefined ? String(cmp.ignoreArrayOrder) : '');
     sv('tc-tolerance',   cmp.numericTolerance !== undefined ? String(cmp.numericTolerance) : '');
+    sv('tc-compareErrorResponses', cmp.compareErrorResponses !== undefined ? String(cmp.compareErrorResponses) : '');
   } else {
     ['tc-id','tc-name','tc-desc','tc-endpoint','tc-author','tc-body',
      'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance'].forEach(id => sv(id, ''));
     sv('tc-method', 'GET'); sv('tc-enabled', 'true');
-    sv('tc-caseSens', ''); sv('tc-ignoreOrder', '');
+    sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
   }
   openModal('caseModal');
 }
@@ -242,8 +243,8 @@ async function saveTestCase() {
   const parseLines = str => str.split('\n').map(s => s.trim()).filter(Boolean)
     .map(kv => { const i = kv.indexOf('='); return i < 0 ? { key: kv, value: '' } : { key: kv.slice(0, i), value: kv.slice(i + 1) }; });
 
-  const cs = g('tc-caseSens'), io = g('tc-ignoreOrder'), tol = g('tc-tolerance');
-  const hasCmp = g('tc-ignoreFields') || cs || io || tol;
+  const cs = g('tc-caseSens'), io = g('tc-ignoreOrder'), tol = g('tc-tolerance'), cer = g('tc-compareErrorResponses');
+  const hasCmp = g('tc-ignoreFields') || cs || io || tol || cer;
 
   const tc = {
     id: g('tc-id'), name: g('tc-name'), description: g('tc-desc'),
@@ -253,10 +254,11 @@ async function saveTestCase() {
     queryParams: parseLines(g('tc-query')),
     formParams:  parseLines(g('tc-form')),
     comparisonConfig: hasCmp ? {
-      ignoreFieldsRaw:  g('tc-ignoreFields'),
-      caseSensitive:    cs  ? cs  === 'true' : undefined,
-      ignoreArrayOrder: io  ? io  === 'true' : undefined,
-      numericTolerance: tol ? +tol           : undefined
+      ignoreFieldsRaw:       g('tc-ignoreFields'),
+      caseSensitive:         cs  ? cs  === 'true' : undefined,
+      ignoreArrayOrder:      io  ? io  === 'true' : undefined,
+      numericTolerance:      tol ? +tol           : undefined,
+      compareErrorResponses: cer ? cer === 'true' : undefined
     } : null
   };
 

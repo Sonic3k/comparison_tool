@@ -16,6 +16,13 @@ public class ComparisonConfig {
     private boolean caseSensitive;
     private boolean ignoreArrayOrder;
     private double numericTolerance;
+    /**
+     * When false (default): any 5xx response is treated as an execution error —
+     * the test is marked ERROR and skipped from comparison.
+     * When true: 4xx/5xx responses are captured and compared normally,
+     * allowing intentional error behavior to be verified across environments.
+     */
+    private boolean compareErrorResponses = false;
 
     public ComparisonConfig() {}
 
@@ -49,4 +56,7 @@ public class ComparisonConfig {
 
     public double getNumericTolerance() { return numericTolerance; }
     public void setNumericTolerance(double numericTolerance) { this.numericTolerance = numericTolerance; }
+
+    public boolean isCompareErrorResponses() { return compareErrorResponses; }
+    public void setCompareErrorResponses(boolean compareErrorResponses) { this.compareErrorResponses = compareErrorResponses; }
 }
