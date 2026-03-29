@@ -364,7 +364,8 @@ async function pollProgress() {
         const grp = suite.testGroups.find(g => g.name === currentGroup);
         if (grp) { renderDetailCases(grp); renderDetailStats(grp); }
       }
-      toast(`Done — ${p.passed} passed, ${p.failed} failed, ${p.errorCount} errors`);
+      renderResultsPanel();
+      showPanel('results');
     }
   }
 }
@@ -372,6 +373,100 @@ async function pollProgress() {
 // ─── Group XML Export ─────────────────────────────────────────────────────────
 function exportGroupXml(name) {
   window.location.href = '/api/groups/' + encodeURIComponent(name) + '/export/xml';
+}
+
+// ─── Results Panel ────────────────────────────────────────────────────────────
+function renderResultsPanel() {
+  const groups = suite?.testGroups || [];
+  let total = 0, passed = 0, failed = 0, error = 0;
+
+  for (const grp of groups) {
+    for (const tc of (grp.testCases || [])) {
+      if (tc.enabled === false) continue;
+      total++;
+      const s = tc.result?.status;
+      if (s === 'passed')      passed++;
+      else if (s === 'failed') failed++;
+      else if (s === 'error')  error++;
+    }
+  }
+
+  const executed = passed + failed + error;
+  const pending  = total - executed;
+  const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
+
+  const empty   = document.getElementById('resultsEmpty');
+  const summBox = document.getElementById('resultsSummaryBox');
+  const breakdown = document.getElementById('resultsGroupBreakdown');
+
+  if (executed === 0) {
+    empty.style.display = ''; summBox.style.display = 'none';
+    breakdown.innerHTML = ''; return;
+  }
+
+  empty.style.display = 'none'; summBox.style.display = '';
+
+  // Overall numbers
+  document.getElementById('resultsPassRate').textContent = passRate + '%';
+  document.getElementById('rs-total').textContent = total;
+  document.getElementById('rs-pass').textContent  = passed;
+  document.getElementById('rs-fail').textContent  = failed;
+  document.getElementById('rs-error').textContent = error;
+  document.getElementById('rs-pend').textContent  = pending;
+  document.getElementById('rs-bar-pass').style.width  = (passed / total * 100) + '%';
+  document.getElementById('rs-bar-fail').style.width  = (failed / total * 100) + '%';
+  document.getElementById('rs-bar-error').style.width = (error  / total * 100) + '%';
+  document.getElementById('resultsRunAt').textContent =
+    'Last run: ' + new Date().toLocaleTimeString();
+
+  // Per-group breakdown
+  breakdown.innerHTML = groups.map(grp => {
+    const cases = (grp.testCases || []).filter(tc => tc.enabled !== false);
+    const gPass  = cases.filter(tc => tc.result?.status === 'passed').length;
+    const gFail  = cases.filter(tc => tc.result?.status === 'failed').length;
+    const gError = cases.filter(tc => tc.result?.status === 'error').length;
+    const gPend  = cases.length - gPass - gFail - gError;
+    const gTotal = cases.length;
+    const gRate  = gTotal > 0 ? Math.round(gPass / gTotal * 100) : 0;
+
+    // Failed/error TCs list
+    const badTcs = cases.filter(tc => tc.result?.status === 'failed' || tc.result?.status === 'error');
+
+    return `<div class="box" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:600;font-size:14px;cursor:pointer;color:var(--blue)"
+             onclick="openGroupDetail('${esc(grp.name)}')">${esc(grp.name)}</div>
+        <span style="font-size:13px;font-weight:700;color:${gRate===100?'#059669':'#d97706'}">${gRate}%</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <div class="sum-pill sum-total"><span class="sum-n">${gTotal}</span><span class="sum-l">Total</span></div>
+        <div class="sum-pill sum-pass" ><span class="sum-n">${gPass}</span><span class="sum-l">Passed</span></div>
+        <div class="sum-pill sum-fail" ><span class="sum-n">${gFail}</span><span class="sum-l">Failed</span></div>
+        <div class="sum-pill sum-error"><span class="sum-n">${gError}</span><span class="sum-l">Error</span></div>
+        <div class="sum-pill sum-pend" ><span class="sum-n">${gPend}</span><span class="sum-l">Pending</span></div>
+      </div>
+      <div style="background:#e5e7eb;border-radius:999px;height:6px;overflow:hidden;display:flex;margin-bottom:${badTcs.length?'12px':'0'}">
+        <div style="background:#10b981;width:${gTotal>0?gPass/gTotal*100:0}%;height:100%"></div>
+        <div style="background:#ef4444;width:${gTotal>0?gFail/gTotal*100:0}%;height:100%"></div>
+        <div style="background:#f97316;width:${gTotal>0?gError/gTotal*100:0}%;height:100%"></div>
+      </div>
+      ${badTcs.length ? `<div style="display:flex;flex-direction:column;gap:4px">
+        ${badTcs.map(tc => {
+          const st = tc.result?.status;
+          const diffs = (tc.result?.differences || '').split('\n').filter(Boolean);
+          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:${st==='error'?'#fff7ed':'#fef2f2'};cursor:pointer"
+                      onclick="openGroupDetail('${esc(grp.name)}')">
+            <span class="bs s-${st}" style="flex-shrink:0">${st}</span>
+            <div>
+              <span style="font-weight:600;font-size:12px">${esc(tc.id)}</span>
+              <span style="color:#6b7280;font-size:12px;margin-left:6px">${esc(tc.name)}</span>
+              ${diffs.length ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">${esc(diffs[0])}${diffs.length>1?' …':''}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : `<div style="font-size:12px;color:#059669;margin-top:4px">✓ All tests passed</div>`}
+    </div>`;
+  }).join('');
 }
 
 // ─── Import Group Modal Tabs ──────────────────────────────────────────────────

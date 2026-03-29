@@ -196,6 +196,7 @@ function renderSuite() {
 
   // Groups
   renderGroupGrid(suite.testGroups || []);
+  if (typeof renderResultsPanel === 'function') renderResultsPanel();
 }
 
 // ─── Modal close on backdrop ──────────────────────────────────────────────────

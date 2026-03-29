@@ -59,6 +59,7 @@
       <div class="nav-item" id="nav-environment"  onclick="showPanel('environment')" ><span class="icon">🌐</span> Environments</div>
       <div class="nav-item" id="nav-authProfiles" onclick="showPanel('authProfiles')"><span class="icon">🔑</span> Auth Profiles</div>
       <div class="nav-item" id="nav-groups"       onclick="showPanel('groups')"      ><span class="icon">📋</span> Test Cases</div>
+      <div class="nav-item" id="nav-results"      onclick="showPanel('results')"     ><span class="icon">📊</span> Results</div>
     </div>
     <div class="sidebar-bottom">
       <button class="btn btn-green" style="width:100%" onclick="runAll()">▶ Run All</button>
@@ -190,6 +191,49 @@
       </div>
 
       <div class="group-grid" id="groupGrid"></div>
+    </div>
+
+    <!-- Results -->
+    <div class="panel" id="panel-results">
+      <div class="section-header">
+        <div class="section-title">📊 Results</div>
+        <span id="resultsRunAt" style="font-size:12px;color:#9ca3af"></span>
+      </div>
+
+      <!-- Overall summary -->
+      <div class="box" id="resultsSummaryBox" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <div style="font-size:24px;font-weight:800;color:#111" id="resultsPassRate"></div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">overall pass rate</div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div class="sum-pill sum-total" ><span class="sum-n" id="rs-total"></span><span class="sum-l">Total</span></div>
+            <div class="sum-pill sum-pass"  ><span class="sum-n" id="rs-pass"></span><span class="sum-l">Passed</span></div>
+            <div class="sum-pill sum-fail"  ><span class="sum-n" id="rs-fail"></span><span class="sum-l">Failed</span></div>
+            <div class="sum-pill sum-error" ><span class="sum-n" id="rs-error"></span><span class="sum-l">Error</span></div>
+            <div class="sum-pill sum-pend"  ><span class="sum-n" id="rs-pend"></span><span class="sum-l">Pending</span></div>
+          </div>
+        </div>
+        <!-- Stacked bar -->
+        <div style="background:#e5e7eb;border-radius:999px;height:10px;overflow:hidden;display:flex;margin-bottom:6px">
+          <div id="rs-bar-pass"  style="background:#10b981;height:100%;transition:width .5s"></div>
+          <div id="rs-bar-fail"  style="background:#ef4444;height:100%;transition:width .5s"></div>
+          <div id="rs-bar-error" style="background:#f97316;height:100%;transition:width .5s"></div>
+        </div>
+        <div style="display:flex;gap:12px;font-size:11px;color:#9ca3af">
+          <span>🟢 Passed</span><span>🔴 Failed</span><span>🟠 Error</span>
+        </div>
+      </div>
+
+      <!-- Per-group breakdown -->
+      <div id="resultsGroupBreakdown"></div>
+
+      <div id="resultsEmpty" style="text-align:center;padding:60px 0;color:#9ca3af">
+        <div style="font-size:40px;margin-bottom:12px">🏁</div>
+        <div style="font-weight:600;margin-bottom:6px">No results yet</div>
+        <div style="font-size:13px">Run your test suite to see results here</div>
+      </div>
     </div>
 
     <!-- Group Detail -->
