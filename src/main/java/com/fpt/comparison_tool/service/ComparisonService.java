@@ -81,14 +81,36 @@ public class ComparisonService {
                 }
             }
             case ARRAY -> {
+                boolean ignoreOrder = config != null && config.isIgnoreArrayOrder();
+
                 if (source.size() != target.size()) {
                     diffs.add(String.format("Array length differs at [%s]: source=%d, target=%d",
                             path, source.size(), target.size()));
+                    // Still compare what we can
                 }
-                int len = Math.min(source.size(), target.size());
-                for (int i = 0; i < len; i++) {
-                    diffNodes(source.get(i), target.get(i),
-                              path + "[" + i + "]", ignore, caseSensitive, tolerance, diffs);
+
+                if (ignoreOrder) {
+                    // Convert both arrays to sorted string representations and match
+                    List<String> srcList = new ArrayList<>();
+                    List<String> tgtList = new ArrayList<>();
+                    source.forEach(n -> srcList.add(n.toString()));
+                    target.forEach(n -> tgtList.add(n.toString()));
+                    Collections.sort(srcList);
+                    Collections.sort(tgtList);
+
+                    for (int i = 0; i < Math.min(srcList.size(), tgtList.size()); i++) {
+                        if (!srcList.get(i).equals(tgtList.get(i))) {
+                            diffs.add(String.format(
+                                "Array element mismatch at [%s] (order ignored): source has \"%s\", target has \"%s\"",
+                                path, srcList.get(i), tgtList.get(i)));
+                        }
+                    }
+                } else {
+                    int len = Math.min(source.size(), target.size());
+                    for (int i = 0; i < len; i++) {
+                        diffNodes(source.get(i), target.get(i),
+                                  path + "[" + i + "]", ignore, caseSensitive, tolerance, diffs);
+                    }
                 }
             }
             case NUMBER -> {
