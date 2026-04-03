@@ -56,6 +56,21 @@ public class TestCase {
         this.result = new TestResult();
     }
 
+    public TestCase(String id, String name, String description, boolean enabled,
+                    HttpMethod method, String endpoint, String author) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+        this.enabled = enabled;
+        this.testMode = TestMode.COMPARISON;
+        this.method = method;
+        this.endpoint = endpoint;
+        this.author = author;
+        this.queryParams = new ArrayList<>();
+        this.formParams = new ArrayList<>();
+        this.result = new TestResult();
+    }
+
     // ── Fluent setters ─────────────────────────────────────────────────────────
     public TestCase withQueryParams(List<Param> p)               { this.queryParams = p;       return this; }
     public TestCase withFormParams(List<Param> p)                { this.formParams = p;        return this; }
