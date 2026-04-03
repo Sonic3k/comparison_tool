@@ -37,10 +37,11 @@ public class ComparisonService {
             Set<String> ignoreFields = new HashSet<>(config != null
                     ? config.getIgnoreFieldsAsList()
                     : Collections.emptyList());
-            boolean caseSensitive = config == null || config.isCaseSensitive();
-            double tolerance      = config != null ? config.getNumericTolerance() : 0.001;
+            boolean caseSensitive  = config == null || config.isCaseSensitive();
+            boolean ignoreArrOrder = config != null && config.isIgnoreArrayOrder();
+            double tolerance       = config != null ? config.getNumericTolerance() : 0.001;
 
-            diffNodes(source, target, "", ignoreFields, caseSensitive, tolerance, diffs);
+            diffNodes(source, target, "", ignoreFields, caseSensitive, ignoreArrOrder, tolerance, diffs);
         } catch (Exception e) {
             // If not valid JSON, do plain string comparison
             if (!Objects.equals(sourceBody, targetBody)) {
@@ -54,8 +55,8 @@ public class ComparisonService {
     // ─── Recursive JSON diff ──────────────────────────────────────────────────
 
     private void diffNodes(JsonNode source, JsonNode target, String path,
-                           Set<String> ignore, boolean caseSensitive, double tolerance,
-                           List<String> diffs) {
+                           Set<String> ignore, boolean caseSensitive, boolean ignoreArrayOrder,
+                           double tolerance, List<String> diffs) {
         if (shouldIgnore(path, ignore)) return;
 
         if (source == null && target == null) return;
@@ -77,20 +78,16 @@ public class ComparisonService {
                 for (String key : allKeys) {
                     String childPath = path.isEmpty() ? key : path + "." + key;
                     diffNodes(source.get(key), target.get(key), childPath, ignore,
-                              caseSensitive, tolerance, diffs);
+                              caseSensitive, ignoreArrayOrder, tolerance, diffs);
                 }
             }
             case ARRAY -> {
-                boolean ignoreOrder = config != null && config.isIgnoreArrayOrder();
-
                 if (source.size() != target.size()) {
                     diffs.add(String.format("Array length differs at [%s]: source=%d, target=%d",
                             path, source.size(), target.size()));
-                    // Still compare what we can
                 }
 
-                if (ignoreOrder) {
-                    // Convert both arrays to sorted string representations and match
+                if (ignoreArrayOrder) {
                     List<String> srcList = new ArrayList<>();
                     List<String> tgtList = new ArrayList<>();
                     source.forEach(n -> srcList.add(n.toString()));
@@ -109,7 +106,7 @@ public class ComparisonService {
                     int len = Math.min(source.size(), target.size());
                     for (int i = 0; i < len; i++) {
                         diffNodes(source.get(i), target.get(i),
-                                  path + "[" + i + "]", ignore, caseSensitive, tolerance, diffs);
+                                  path + "[" + i + "]", ignore, caseSensitive, ignoreArrayOrder, tolerance, diffs);
                     }
                 }
             }
