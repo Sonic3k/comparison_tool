@@ -189,6 +189,9 @@ public class ExecutionService {
 
     private Object resolveBody(TestCase tc, HttpHeaders headers) {
         if (tc.getFormParams() != null && !tc.getFormParams().isEmpty()) {
+            // Remove any existing Content-Type (e.g. application/json from env headers)
+            // before setting form-urlencoded — otherwise server gets 415
+            headers.remove(HttpHeaders.CONTENT_TYPE);
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
             org.springframework.util.MultiValueMap<String, String> form =
                     new org.springframework.util.LinkedMultiValueMap<>();
