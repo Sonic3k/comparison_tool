@@ -170,11 +170,22 @@ function renderDetailStats(grp) {
     </div>`;
 }
 
+function modeBadge(mode) {
+  const cfg = {
+    comparison: ['#e0f2fe','#0369a1','CMP'],
+    automation: ['#f3e8ff','#7c3aed','AUTO'],
+    both:       ['#fef9c3','#a16207','BOTH']
+  };
+  const [bg, fg, label] = cfg[mode] || cfg['comparison'];
+  return `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:${bg};color:${fg}">${label}</span>`;
+}
+
 function renderDetailCases(grp) {
   document.getElementById('detailCasesTable').innerHTML =
     (grp.testCases || []).map(tc => {
       const res = tc.result || {}, st = res.status || 'pending';
       const disabled = tc.enabled === false;
+      const mode = tc.testMode || 'comparison';
       return `
         <tr class="case-row${disabled ? ' case-disabled' : ''}" id="row-${esc(tc.id)}">
           <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
@@ -182,8 +193,8 @@ function renderDetailCases(grp) {
           <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
           <td class="mono" style="color:#6b7280">${esc(tc.endpoint || '')}</td>
+          <td>${modeBadge(mode)}</td>
           <td><span class="bs s-${st}">${st}</span></td>
-          <td class="mono">${esc(res.sourceStatus || '')}</td>
           <td class="mono">${esc(res.targetStatus || '')}</td>
           <td onclick="event.stopPropagation()" style="white-space:nowrap">
             <button class="btn btn-xs ${disabled ? 'toggle-off' : 'toggle-on'}"
@@ -203,20 +214,57 @@ function renderDetailCases(grp) {
 }
 
 function renderExpand(tc) {
-  const res = tc.result || {}, diffs = (res.differences || '').split('\n').filter(Boolean);
+  const res = tc.result || {};
+  const mode = res.modeRun || tc.testMode || 'comparison';
+
+  // Comparison block
+  const hasCmp = mode === 'comparison' || mode === 'both';
+  const diffs = (res.comparisonResult || '').split('\n').filter(Boolean);
+  const cmpBlock = hasCmp ? `
+    <div style="margin-bottom:12px">
+      <div class="expand-label" style="color:#0369a1">⇄ Comparison Result
+        ${res.sourceStatus ? `<span style="color:#6b7280;font-weight:400;font-size:11px">· src ${res.sourceStatus} / tgt ${res.targetStatus || '—'}</span>` : ''}
+      </div>
+      ${diffs.length
+        ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>`
+        : (hasCmp && res.status ? `<div style="color:#059669;font-size:12px">✓ No differences</div>` : '')}
+      ${res.sourceResponse || res.targetResponse ? `
+        <div class="expand-grid" style="margin-top:8px">
+          <div>
+            <div class="expand-label">Source Response (${esc(res.sourceStatus || '—')})</div>
+            <div class="expand-body">${esc(res.sourceResponse || '—')}</div>
+          </div>
+          <div>
+            <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
+            <div class="expand-body">${esc(res.targetResponse || '—')}</div>
+          </div>
+        </div>` : ''}
+    </div>` : '';
+
+  // Automation block
+  const hasAuto = mode === 'automation' || mode === 'both';
+  const assertLines = (res.assertionResult || '').split('\n').filter(Boolean);
+  const autoBlock = hasAuto ? `
+    <div style="margin-bottom:12px">
+      <div class="expand-label" style="color:#7c3aed">✓ Assertion Result
+        ${res.targetStatus ? `<span style="color:#6b7280;font-weight:400;font-size:11px">· tgt ${res.targetStatus}</span>` : ''}
+      </div>
+      ${assertLines.length
+        ? `<div style="font-size:12px;font-family:monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-top:4px;white-space:pre-wrap">${assertLines.map(l => {
+            const fail = l.startsWith('✗');
+            return `<span style="color:${fail ? '#dc2626' : '#059669'}">${esc(l)}</span>`;
+          }).join('\n')}</div>`
+        : (hasAuto && res.status ? `<div style="color:#059669;font-size:12px">✓ All assertions passed</div>` : '')}
+      ${res.targetResponse && !hasCmp ? `
+        <div style="margin-top:8px">
+          <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
+          <div class="expand-body">${esc(res.targetResponse || '—')}</div>
+        </div>` : ''}
+    </div>` : '';
+
   return `<div>
-    ${diffs.length ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>` : ''}
-    <div class="expand-grid">
-      <div>
-        <div class="expand-label">Source Response (HTTP ${esc(res.sourceStatus || '—')})</div>
-        <div class="expand-body">${esc(res.sourceResponse || '—')}</div>
-      </div>
-      <div>
-        <div class="expand-label">Target Response (HTTP ${esc(res.targetStatus || '—')})</div>
-        <div class="expand-body">${esc(res.targetResponse || '—')}</div>
-      </div>
-    </div>
-    ${res.executedAt ? `<div style="font-size:11px;color:#9ca3af;margin-top:8px">Executed: ${esc(res.executedAt)}</div>` : ''}
+    ${cmpBlock}${autoBlock}
+    ${res.executedAt ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px">Executed: ${esc(res.executedAt)}</div>` : ''}
   </div>`;
 }
 
@@ -250,6 +298,7 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-id', tc.id);             sv('tc-name', tc.name);
     sv('tc-desc', tc.description);  sv('tc-method', tc.method);
     sv('tc-enabled', String(tc.enabled !== false));
+    sv('tc-mode', tc.testMode || 'comparison');
     sv('tc-endpoint', tc.endpoint); sv('tc-author', tc.author);
     sv('tc-body', tc.jsonBody);     sv('tc-headers', tc.headers);
     sv('tc-query', (tc.queryParams || []).map(p => p.key + '=' + p.value).join('\n'));
@@ -260,13 +309,30 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-ignoreOrder', cmp.ignoreArrayOrder !== undefined ? String(cmp.ignoreArrayOrder) : '');
     sv('tc-tolerance',   cmp.numericTolerance !== undefined ? String(cmp.numericTolerance) : '');
     sv('tc-compareErrorResponses', cmp.compareErrorResponses !== undefined ? String(cmp.compareErrorResponses) : '');
+    const auto = tc.automationConfig || {};
+    sv('tc-expStatus',  auto.expectedStatus  || '');
+    sv('tc-expBody',    auto.expectedBody    || '');
+    sv('tc-expHeaders', auto.expectedHeaders || '');
+    sv('tc-maxRt',      auto.maxResponseTime  ? String(auto.maxResponseTime) : '');
   } else {
     ['tc-id','tc-name','tc-desc','tc-endpoint','tc-author','tc-body',
-     'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance'].forEach(id => sv(id, ''));
-    sv('tc-method', 'GET'); sv('tc-enabled', 'true');
+     'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance',
+     'tc-expStatus','tc-expBody','tc-expHeaders','tc-maxRt'].forEach(id => sv(id, ''));
+    sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-mode', 'comparison');
     sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
   }
+  updateModeUI();
   openModal('caseModal');
+}
+
+function updateModeUI() {
+  const mode = g('tc-mode');
+  const showCmp  = mode === 'comparison' || mode === 'both';
+  const showAuto = mode === 'automation'  || mode === 'both';
+  const cmpSec  = document.getElementById('cmpSection');
+  const autoSec = document.getElementById('autoSection');
+  if (cmpSec)  cmpSec.style.display  = showCmp  ? '' : 'none';
+  if (autoSec) autoSec.style.display = showAuto ? '' : 'none';
 }
 
 function editCase(groupName, caseId) {
@@ -283,9 +349,14 @@ async function saveTestCase() {
   const cs = g('tc-caseSens'), io = g('tc-ignoreOrder'), tol = g('tc-tolerance'), cer = g('tc-compareErrorResponses');
   const hasCmp = g('tc-ignoreFields') || cs || io || tol || cer;
 
+  const mode = g('tc-mode') || 'comparison';
+  const expStatus = g('tc-expStatus'), expBody = g('tc-expBody'),
+        expHeaders = g('tc-expHeaders'), maxRt = g('tc-maxRt');
+  const hasAuto = expStatus || expBody || expHeaders || maxRt;
+
   const tc = {
     id: g('tc-id'), name: g('tc-name'), description: g('tc-desc'),
-    enabled: g('tc-enabled') === 'true', method: g('tc-method'),
+    enabled: g('tc-enabled') === 'true', testMode: mode, method: g('tc-method'),
     endpoint: g('tc-endpoint'), author: g('tc-author'),
     jsonBody: g('tc-body'), headers: g('tc-headers'),
     queryParams: parseLines(g('tc-query')),
@@ -296,6 +367,12 @@ async function saveTestCase() {
       ignoreArrayOrder:      io  ? io  === 'true' : undefined,
       numericTolerance:      tol ? +tol           : undefined,
       compareErrorResponses: cer ? cer === 'true' : undefined
+    } : null,
+    automationConfig: hasAuto ? {
+      expectedStatus:  expStatus,
+      expectedBody:    expBody,
+      expectedHeaders: expHeaders,
+      maxResponseTime: maxRt ? parseInt(maxRt) : 0
     } : null
   };
 

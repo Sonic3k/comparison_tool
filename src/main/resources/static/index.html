@@ -360,6 +360,13 @@
       <div class="form-group"><label>Enabled</label>
         <select id="tc-enabled"><option value="true">Yes</option><option value="false">No</option></select>
       </div>
+      <div class="form-group"><label>Mode</label>
+        <select id="tc-mode" onchange="updateModeUI()">
+          <option value="comparison">Comparison — compare source vs target</option>
+          <option value="automation">Automation — assert target only</option>
+          <option value="both">Both — compare + assert target</option>
+        </select>
+      </div>
       <div class="form-group form-full"><label>Endpoint</label><input id="tc-endpoint" placeholder="/api/users/123"/></div>
       <div class="form-group form-full"><label>Query Params <span class="form-hint">— key=value, one per line</span></label><textarea id="tc-query" rows="3"></textarea></div>
       <div class="form-group form-full"><label>Form Params <span class="form-hint">— key=value, one per line</span></label><textarea id="tc-form" rows="3"></textarea></div>
@@ -367,7 +374,7 @@
       <div class="form-group form-full"><label>Headers <span class="form-hint">— Key: Value, one per line</span></label><textarea id="tc-headers" rows="3"></textarea></div>
       <div class="form-group"><label>Author</label><input id="tc-author"/></div>
     </div>
-    <div style="border-top:1px solid var(--gray-border);margin:16px -24px 0;padding:14px 24px 0">
+    <div id="cmpSection" style="border-top:1px solid var(--gray-border);margin:16px -24px 0;padding:14px 24px 0">
       <div style="font-size:13px;font-weight:600;color:#0f766e;margin-bottom:12px">
         🔧 Comparison Override <span class="form-hint" style="font-weight:400">— leave blank = use global config</span>
       </div>
@@ -380,6 +387,19 @@
         <div class="form-group"><label>Numeric Tolerance</label><input id="tc-tolerance" placeholder="e.g. 0.001"/></div>
         <div class="form-group form-full"><label>Compare Error Responses</label>
           <select id="tc-compareErrorResponses"><option value="">— global —</option><option value="true">ON — capture and compare all responses</option><option value="false">OFF — 5xx treated as error</option></select></div>
+      </div>
+    </div>
+    <div id="autoSection" style="border-top:1px solid var(--gray-border);margin:16px -24px 0;padding:14px 24px 0;display:none">
+      <div style="font-size:13px;font-weight:600;color:#7c3aed;margin-bottom:12px">
+        🤖 Automation Assertions <span class="form-hint" style="font-weight:400">— validated against target response</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Expected Status</label><input id="tc-expStatus" placeholder="e.g. 200, 404, 2xx"/></div>
+        <div class="form-group"><label>Max Response Time (ms)</label><input id="tc-maxRt" placeholder="e.g. 2000"/></div>
+        <div class="form-group form-full"><label>Expected Body Assertions <span class="form-hint">— one per line: $.field == value, $.field exists, $.array.length > 0</span></label>
+          <textarea id="tc-expBody" rows="5" style="font-family:monospace;font-size:12px" placeholder="$.id != null&#10;$.status == &quot;active&quot;&#10;$.items.length > 0&#10;$.error exists"></textarea></div>
+        <div class="form-group form-full"><label>Expected Headers <span class="form-hint">— Header: value, one per line</span></label>
+          <textarea id="tc-expHeaders" rows="2" placeholder="Content-Type: application/json"></textarea></div>
       </div>
     </div>
     <div class="modal-footer">

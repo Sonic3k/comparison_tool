@@ -2,6 +2,7 @@ package com.fpt.comparison_tool.service;
 
 import com.fpt.comparison_tool.dto.ExecutionProgress;
 import com.fpt.comparison_tool.model.*;
+import com.fpt.comparison_tool.service.AssertionService.AssertionLine;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -22,15 +23,18 @@ public class ExecutionService {
     private final RestTemplate restTemplate;
     private final AuthService authService;
     private final ComparisonService comparisonService;
+    private final AssertionService assertionService;
     private final ExecutorService executor;
 
     public ExecutionService(RestTemplate restTemplate,
                             AuthService authService,
                             ComparisonService comparisonService,
+                            AssertionService assertionService,
                             ExecutorService executionExecutor) {
         this.restTemplate      = restTemplate;
         this.authService       = authService;
         this.comparisonService = comparisonService;
+        this.assertionService  = assertionService;
         this.executor          = executionExecutor;
     }
 
@@ -46,7 +50,6 @@ public class ExecutionService {
                 ExecutionConfig ec = suite.getSettings().getExecutionConfig();
                 ExecutionMode mode = ec.getMode();
 
-                // Resolve source and target environments by name
                 Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
                 Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
 
@@ -61,15 +64,15 @@ public class ExecutionService {
         }, executor);
     }
 
-    // ─── Group execution ──────────────────────────────────────────────────────
+    // ── Group ──────────────────────────────────────────────────────────────────
 
-    private void executeGroup(TestGroup group, TestSuite suite, ExecutionMode mode,
+    private void executeGroup(TestGroup group, TestSuite suite, ExecutionMode execMode,
                               Environment sourceEnv, Environment targetEnv,
                               ExecutionProgress progress) {
         List<TestCase> enabled = group.getTestCases().stream()
                 .filter(TestCase::isEnabled).collect(Collectors.toList());
 
-        if (mode == ExecutionMode.PARALLEL) {
+        if (execMode == ExecutionMode.PARALLEL) {
             List<CompletableFuture<Void>> futures = enabled.stream()
                     .map(tc -> CompletableFuture.runAsync(
                             () -> executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress),
@@ -83,69 +86,191 @@ public class ExecutionService {
         }
     }
 
-    // ─── Single test case ─────────────────────────────────────────────────────
+    // ── Single TC ──────────────────────────────────────────────────────────────
 
     private void executeAndRecord(TestCase tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress) {
-        ComparisonConfig cmp = resolveComparison(tc, suite);
+        TestMode testMode = tc.getTestMode() != null ? tc.getTestMode() : TestMode.COMPARISON;
+        String timestamp  = LocalDateTime.now().format(TIMESTAMP_FMT);
 
         try {
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
-
-            AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
             AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
 
-            ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, tc, sourceAuth);
-            if (delayMs > 0) Thread.sleep(delayMs);
-            ResponseEntity<String> targetResp = callEndpoint(targetEnv, tc, targetAuth);
-
-            int srcStatus = sourceResp.getStatusCode().value();
-            int tgtStatus = targetResp.getStatusCode().value();
-            String srcBody = sourceResp.getBody();
-            String tgtBody = targetResp.getBody();
-
-            // If compareErrorResponses=false (default): treat any 5xx as ERROR
-            // — server is broken, comparison result would be meaningless
-            if (!cmp.isCompareErrorResponses()) {
-                boolean srcServerError = srcStatus >= 500;
-                boolean tgtServerError = tgtStatus >= 500;
-                if (srcServerError || tgtServerError) {
-                    String msg = srcServerError
-                            ? "Source returned " + srcStatus + " — server error, cannot compare"
-                            : "Target returned " + tgtStatus + " — server error, cannot compare";
-                    tc.setResult(new TestResult(ExecutionStatus.ERROR, msg,
-                            String.valueOf(srcStatus), String.valueOf(tgtStatus),
-                            srcBody, tgtBody, LocalDateTime.now().format(TIMESTAMP_FMT)));
-                    progress.recordError(group.getName(), tc.getId());
-                    return;
-                }
+            switch (testMode) {
+                case COMPARISON -> runComparison(tc, group, suite, sourceEnv, targetEnv, progress, delayMs, timestamp);
+                case AUTOMATION -> runAutomation(tc, group, suite, targetEnv, targetAuth, progress, timestamp);
+                case BOTH       -> runBoth(tc, group, suite, sourceEnv, targetEnv, progress, delayMs, timestamp);
             }
 
-            List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
-            ExecutionStatus status = diffs.isEmpty() ? ExecutionStatus.PASSED : ExecutionStatus.FAILED;
-
-            tc.setResult(new TestResult(status, String.join("\n", diffs),
-                    String.valueOf(srcStatus), String.valueOf(tgtStatus),
-                    srcBody, tgtBody, LocalDateTime.now().format(TIMESTAMP_FMT)));
-
-            if (status == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), tc.getId());
-            else                                   progress.recordFailed(group.getName(), tc.getId());
-
         } catch (Exception e) {
-            tc.setResult(new TestResult(ExecutionStatus.ERROR,
-                    "Execution error: " + e.getMessage(),
-                    null, null, null, null, LocalDateTime.now().format(TIMESTAMP_FMT)));
+            TestResult r = new TestResult();
+            r.setStatus(ExecutionStatus.ERROR);
+            r.setModeRun(testMode.getValue());
+            r.setComparisonResult("Execution error: " + e.getMessage());
+            r.setExecutedAt(timestamp);
+            tc.setResult(r);
             progress.recordError(group.getName(), tc.getId());
         }
     }
 
-    // ─── HTTP call ────────────────────────────────────────────────────────────
+    // ── COMPARISON mode ────────────────────────────────────────────────────────
+
+    private void runComparison(TestCase tc, TestGroup group, TestSuite suite,
+                               Environment sourceEnv, Environment targetEnv,
+                               ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
+        ComparisonConfig cmp = resolveComparison(tc, suite);
+
+        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
+        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+
+        ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, tc, sourceAuth);
+        if (delayMs > 0) Thread.sleep(delayMs);
+        ResponseEntity<String> targetResp = callEndpoint(targetEnv, tc, targetAuth);
+
+        int srcStatus = sourceResp.getStatusCode().value();
+        int tgtStatus = targetResp.getStatusCode().value();
+        String srcBody = sourceResp.getBody();
+        String tgtBody = targetResp.getBody();
+
+        TestResult r = new TestResult();
+        r.setModeRun(TestMode.COMPARISON.getValue());
+        r.setSourceStatus(String.valueOf(srcStatus));
+        r.setTargetStatus(String.valueOf(tgtStatus));
+        r.setSourceResponse(srcBody);
+        r.setTargetResponse(tgtBody);
+        r.setExecutedAt(timestamp);
+
+        if (!cmp.isCompareErrorResponses() && (srcStatus >= 500 || tgtStatus >= 500)) {
+            String msg = srcStatus >= 500
+                    ? "Source returned " + srcStatus + " — server error, cannot compare"
+                    : "Target returned " + tgtStatus + " — server error, cannot compare";
+            r.setStatus(ExecutionStatus.ERROR);
+            r.setComparisonResult(msg);
+            tc.setResult(r);
+            progress.recordError(group.getName(), tc.getId());
+            return;
+        }
+
+        List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
+        r.setStatus(diffs.isEmpty() ? ExecutionStatus.PASSED : ExecutionStatus.FAILED);
+        r.setComparisonResult(String.join("\n", diffs));
+        tc.setResult(r);
+
+        if (r.getStatus() == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), tc.getId());
+        else                                          progress.recordFailed(group.getName(), tc.getId());
+    }
+
+    // ── AUTOMATION mode ────────────────────────────────────────────────────────
+
+    private void runAutomation(TestCase tc, TestGroup group, TestSuite suite,
+                               Environment targetEnv, AuthProfile targetAuth,
+                               ExecutionProgress progress, String timestamp) throws Exception {
+        AutomationConfig auto = tc.getAutomationConfig();
+
+        long start = System.currentTimeMillis();
+        ResponseEntity<String> targetResp = callEndpoint(targetEnv, tc, targetAuth);
+        long elapsed = System.currentTimeMillis() - start;
+
+        int tgtStatus = targetResp.getStatusCode().value();
+        String tgtBody = targetResp.getBody();
+
+        TestResult r = new TestResult();
+        r.setModeRun(TestMode.AUTOMATION.getValue());
+        r.setTargetStatus(String.valueOf(tgtStatus));
+        r.setTargetResponse(tgtBody);
+        r.setExecutedAt(timestamp);
+
+        // Run assertions
+        List<AssertionLine> assertions = Collections.emptyList();
+        if (auto != null) {
+            assertions = assertionService.evaluate(
+                    auto.getExpectedStatus(), auto.getExpectedBody(),
+                    auto.getExpectedHeaders(), tgtStatus, elapsed, tgtBody,
+                    targetResp.getHeaders());
+        }
+
+        boolean passed = assertionService.allPassed(assertions);
+        r.setStatus(assertions.isEmpty() ? ExecutionStatus.ERROR :
+                    passed ? ExecutionStatus.PASSED : ExecutionStatus.FAILED);
+        r.setAssertionResult(assertionService.summarize(assertions));
+        tc.setResult(r);
+
+        if (passed) progress.recordPassed(group.getName(), tc.getId());
+        else        progress.recordFailed(group.getName(), tc.getId());
+    }
+
+    // ── BOTH mode ──────────────────────────────────────────────────────────────
+
+    private void runBoth(TestCase tc, TestGroup group, TestSuite suite,
+                         Environment sourceEnv, Environment targetEnv,
+                         ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
+        ComparisonConfig cmp = resolveComparison(tc, suite);
+        AutomationConfig auto = tc.getAutomationConfig();
+
+        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
+        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+
+        ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, tc, sourceAuth);
+        if (delayMs > 0) Thread.sleep(delayMs);
+        long start = System.currentTimeMillis();
+        ResponseEntity<String> targetResp = callEndpoint(targetEnv, tc, targetAuth);
+        long elapsed = System.currentTimeMillis() - start;
+
+        int srcStatus = sourceResp.getStatusCode().value();
+        int tgtStatus = targetResp.getStatusCode().value();
+        String srcBody = sourceResp.getBody();
+        String tgtBody = targetResp.getBody();
+
+        TestResult r = new TestResult();
+        r.setModeRun(TestMode.BOTH.getValue());
+        r.setSourceStatus(String.valueOf(srcStatus));
+        r.setTargetStatus(String.valueOf(tgtStatus));
+        r.setSourceResponse(srcBody);
+        r.setTargetResponse(tgtBody);
+        r.setExecutedAt(timestamp);
+
+        // Comparison
+        String compResult = "";
+        boolean compOk = true;
+        if (!cmp.isCompareErrorResponses() && (srcStatus >= 500 || tgtStatus >= 500)) {
+            compResult = srcStatus >= 500
+                    ? "Source " + srcStatus + " — server error"
+                    : "Target " + tgtStatus + " — server error";
+            compOk = false;
+        } else {
+            List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
+            compResult = String.join("\n", diffs);
+            compOk = diffs.isEmpty();
+        }
+        r.setComparisonResult(compResult);
+
+        // Automation
+        List<AssertionLine> assertions = Collections.emptyList();
+        if (auto != null) {
+            assertions = assertionService.evaluate(
+                    auto.getExpectedStatus(), auto.getExpectedBody(),
+                    auto.getExpectedHeaders(), tgtStatus, elapsed, tgtBody,
+                    targetResp.getHeaders());
+        }
+        boolean assertOk = assertionService.allPassed(assertions);
+        r.setAssertionResult(assertionService.summarize(assertions));
+
+        // Overall status: pass only if both pass
+        boolean bothPass = compOk && assertOk;
+        r.setStatus(bothPass ? ExecutionStatus.PASSED : ExecutionStatus.FAILED);
+        tc.setResult(r);
+
+        if (bothPass) progress.recordPassed(group.getName(), tc.getId());
+        else          progress.recordFailed(group.getName(), tc.getId());
+    }
+
+    // ── HTTP call (unchanged) ──────────────────────────────────────────────────
 
     private ResponseEntity<String> callEndpoint(Environment env, TestCase tc, AuthProfile auth) {
         HttpHeaders headers = new HttpHeaders();
 
-        // 1. Apply environment default headers from List<Param>
         if (env != null && env.getHeaders() != null) {
             for (Param p : env.getHeaders()) {
                 if (p.getKey() != null && !p.getKey().isBlank()) {
@@ -154,7 +279,6 @@ public class ExecutionService {
             }
         }
 
-        // 2. Apply test case custom headers (override env defaults)
         if (tc.getHeaders() != null && !tc.getHeaders().isBlank()) {
             for (String line : tc.getHeaders().split("\n")) {
                 int idx = line.indexOf(':');
@@ -162,14 +286,10 @@ public class ExecutionService {
             }
         }
 
-        // 3. Apply auth
         authService.applyAuth(auth, headers);
 
-        // 4. Build URL
         String baseUrl = env != null ? env.getUrl() : "";
         String url = buildUrl(baseUrl, tc);
-
-        // 5. Build body — also sets Content-Type correctly (form > json > env default)
         Object body = resolveBody(tc, headers);
 
         HttpEntity<Object> entity = new HttpEntity<>(body, headers);
@@ -189,8 +309,6 @@ public class ExecutionService {
 
     private Object resolveBody(TestCase tc, HttpHeaders headers) {
         if (tc.getFormParams() != null && !tc.getFormParams().isEmpty()) {
-            // Remove any existing Content-Type (e.g. application/json from env headers)
-            // before setting form-urlencoded — otherwise server gets 415
             headers.remove(HttpHeaders.CONTENT_TYPE);
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
             org.springframework.util.MultiValueMap<String, String> form =
@@ -206,7 +324,7 @@ public class ExecutionService {
         return null;
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private List<TestGroup> filterGroups(TestSuite suite, List<String> filter) {
         if (filter == null || filter.isEmpty()) return suite.getTestGroups();
@@ -222,13 +340,11 @@ public class ExecutionService {
     }
 
     private ComparisonConfig resolveComparison(TestCase tc, TestSuite suite) {
-        ComparisonConfig global = suite.getSettings().getComparisonConfig();
+        ComparisonConfig global   = suite.getSettings().getComparisonConfig();
         ComparisonConfig override = tc.getComparisonConfig();
         if (override == null) return global;
 
-        // Merge: TC override wins for fields that are explicitly set, else fall back to global
         ComparisonConfig merged = new ComparisonConfig();
-        // Merge ignoreFields: combine global + TC override (union, not replace)
         String globalFields = global.getIgnoreFieldsRaw() != null ? global.getIgnoreFieldsRaw() : "";
         String tcFields     = override.getIgnoreFieldsRaw() != null ? override.getIgnoreFieldsRaw() : "";
         String mergedFields = globalFields;
@@ -240,9 +356,6 @@ public class ExecutionService {
         merged.setIgnoreArrayOrder(override.isIgnoreArrayOrder());
         merged.setNumericTolerance(override.getNumericTolerance() > 0
                 ? override.getNumericTolerance() : global.getNumericTolerance());
-        // compareErrorResponses: TC override only applies if explicitly set (non-null from JSON)
-        // Since boolean defaults to false, we check via Jackson's deserialization —
-        // but to be safe, treat TC override as authoritative only if TC config is present
         merged.setCompareErrorResponses(override.isCompareErrorResponses());
         return merged;
     }

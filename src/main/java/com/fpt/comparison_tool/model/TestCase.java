@@ -15,11 +15,14 @@ public class TestCase {
     @JacksonXmlProperty(isAttribute = true)
     private String name;
 
-    // Long text — child element, not attribute
     private String description;
 
     @JacksonXmlProperty(isAttribute = true)
     private boolean enabled;
+
+    /** Whether to run comparison, automation, or both. Default = comparison. */
+    @JacksonXmlProperty(isAttribute = true)
+    private TestMode testMode = TestMode.COMPARISON;
 
     @JacksonXmlProperty(isAttribute = true)
     private HttpMethod method;
@@ -41,52 +44,33 @@ public class TestCase {
     @JacksonXmlProperty(isAttribute = true)
     private String author;
 
-    // Field named "comparisonConfig" → XML element <comparisonConfig>
     private ComparisonConfig comparisonConfig;
-
+    private AutomationConfig automationConfig;
     private TestResult result;
 
     public TestCase() {
         this.enabled = true;
+        this.testMode = TestMode.COMPARISON;
         this.queryParams = new ArrayList<>();
         this.formParams = new ArrayList<>();
         this.result = new TestResult();
     }
 
-    public TestCase(String id, String name, String description, boolean enabled,
-                    HttpMethod method, String endpoint, String author) {
-        this.id = id;
-        this.name = name;
-        this.description = description;
-        this.enabled = enabled;
-        this.method = method;
-        this.endpoint = endpoint;
-        this.author = author;
-        this.queryParams = new ArrayList<>();
-        this.formParams = new ArrayList<>();
-        this.result = new TestResult();
-    }
+    // ── Fluent setters ─────────────────────────────────────────────────────────
+    public TestCase withQueryParams(List<Param> p)               { this.queryParams = p;       return this; }
+    public TestCase withFormParams(List<Param> p)                { this.formParams = p;        return this; }
+    public TestCase withJsonBody(String b)                       { this.jsonBody = b;          return this; }
+    public TestCase withHeaders(String h)                        { this.headers = h;           return this; }
+    public TestCase withComparison(ComparisonConfig c)           { this.comparisonConfig = c;  return this; }
+    public TestCase withAutomation(AutomationConfig a)           { this.automationConfig = a;  return this; }
+    public TestCase withResult(TestResult r)                     { this.result = r;            return this; }
 
-    // ─── Fluent setters ───────────────────────────────────────────────────────
-
-    public TestCase withQueryParams(List<Param> params)           { this.queryParams = params;  return this; }
-    public TestCase withFormParams(List<Param> params)            { this.formParams  = params;  return this; }
-    public TestCase withJsonBody(String jsonBody)                  { this.jsonBody = jsonBody;   return this; }
-    public TestCase withHeaders(String headers)                    { this.headers = headers;     return this; }
-    public TestCase withComparison(ComparisonConfig comparisonConfig) { this.comparisonConfig = comparisonConfig; return this; }
-    public TestCase withResult(TestResult result)                  { this.result = result;       return this; }
-
-    // ─── Excel helpers — flatten List<Param> → "key=value&key=value" ─────────
+    // ── Excel helpers ──────────────────────────────────────────────────────────
+    @JsonIgnore
+    public String getQueryParamsAsString() { return paramsToString(queryParams); }
 
     @JsonIgnore
-    public String getQueryParamsAsString() {
-        return paramsToString(queryParams);
-    }
-
-    @JsonIgnore
-    public String getFormParamsAsString() {
-        return paramsToString(formParams);
-    }
+    public String getFormParamsAsString() { return paramsToString(formParams); }
 
     private String paramsToString(List<Param> params) {
         if (params == null || params.isEmpty()) return "";
@@ -98,7 +82,7 @@ public class TestCase {
         return sb.toString();
     }
 
-    // ─── Getters / Setters ────────────────────────────────────────────────────
+    // ── Getters / Setters ──────────────────────────────────────────────────────
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -111,6 +95,9 @@ public class TestCase {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public TestMode getTestMode() { return testMode; }
+    public void setTestMode(TestMode testMode) { this.testMode = testMode != null ? testMode : TestMode.COMPARISON; }
 
     public HttpMethod getMethod() { return method; }
     public void setMethod(HttpMethod method) { this.method = method; }
@@ -134,7 +121,10 @@ public class TestCase {
     public void setAuthor(String author) { this.author = author; }
 
     public ComparisonConfig getComparisonConfig() { return comparisonConfig; }
-    public void setComparisonConfig(ComparisonConfig comparisonConfig) { this.comparisonConfig = comparisonConfig; }
+    public void setComparisonConfig(ComparisonConfig c) { this.comparisonConfig = c; }
+
+    public AutomationConfig getAutomationConfig() { return automationConfig; }
+    public void setAutomationConfig(AutomationConfig a) { this.automationConfig = a; }
 
     public TestResult getResult() { return result; }
     public void setResult(TestResult result) { this.result = result; }
