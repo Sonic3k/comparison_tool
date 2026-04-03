@@ -169,7 +169,7 @@ public class ExecutionService {
         String baseUrl = env != null ? env.getUrl() : "";
         String url = buildUrl(baseUrl, tc);
 
-        // 5. Build body
+        // 5. Build body — also sets Content-Type correctly (form > json > env default)
         Object body = resolveBody(tc, headers);
 
         HttpEntity<Object> entity = new HttpEntity<>(body, headers);
@@ -225,9 +225,14 @@ public class ExecutionService {
 
         // Merge: TC override wins for fields that are explicitly set, else fall back to global
         ComparisonConfig merged = new ComparisonConfig();
-        merged.setIgnoreFieldsRaw(
-            override.getIgnoreFieldsRaw() != null && !override.getIgnoreFieldsRaw().isBlank()
-                ? override.getIgnoreFieldsRaw() : global.getIgnoreFieldsRaw());
+        // Merge ignoreFields: combine global + TC override (union, not replace)
+        String globalFields = global.getIgnoreFieldsRaw() != null ? global.getIgnoreFieldsRaw() : "";
+        String tcFields     = override.getIgnoreFieldsRaw() != null ? override.getIgnoreFieldsRaw() : "";
+        String mergedFields = globalFields;
+        if (!tcFields.isBlank()) {
+            mergedFields = globalFields.isBlank() ? tcFields : globalFields + "," + tcFields;
+        }
+        merged.setIgnoreFieldsRaw(mergedFields);
         merged.setCaseSensitive(override.isCaseSensitive());
         merged.setIgnoreArrayOrder(override.isIgnoreArrayOrder());
         merged.setNumericTolerance(override.getNumericTolerance() > 0
