@@ -185,7 +185,7 @@ function renderDetailCases(grp) {
     (grp.testCases || []).map(tc => {
       const res = tc.result || {}, st = res.status || 'pending';
       const disabled = tc.enabled === false;
-      const mode = tc.testMode || 'comparison';
+      const mode = tc.verificationMode || 'comparison';
       return `
         <tr class="case-row${disabled ? ' case-disabled' : ''}" id="row-${esc(tc.id)}">
           <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
@@ -215,7 +215,7 @@ function renderDetailCases(grp) {
 
 function renderExpand(tc) {
   const res = tc.result || {};
-  const mode = res.modeRun || tc.testMode || 'comparison';
+  const mode = res.modeRun || tc.verificationMode || 'comparison';
 
   // Comparison block
   const hasCmp = mode === 'comparison' || mode === 'both';
@@ -298,7 +298,7 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-id', tc.id);             sv('tc-name', tc.name);
     sv('tc-desc', tc.description);  sv('tc-method', tc.method);
     sv('tc-enabled', String(tc.enabled !== false));
-    sv('tc-mode', tc.testMode || 'comparison');
+    sv('tc-verificationMode', tc.verificationMode || 'comparison');
     sv('tc-endpoint', tc.endpoint); sv('tc-author', tc.author);
     sv('tc-body', tc.jsonBody);     sv('tc-headers', tc.headers);
     sv('tc-query', (tc.queryParams || []).map(p => p.key + '=' + p.value).join('\n'));
@@ -318,7 +318,7 @@ function showCaseModal(groupName, tc = null) {
     ['tc-id','tc-name','tc-desc','tc-endpoint','tc-author','tc-body',
      'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance',
      'tc-expStatus','tc-expBody','tc-expHeaders','tc-maxRt'].forEach(id => sv(id, ''));
-    sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-mode', 'comparison');
+    sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-verificationMode', 'comparison');
     sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
   }
   updateModeUI();
@@ -326,7 +326,7 @@ function showCaseModal(groupName, tc = null) {
 }
 
 function updateModeUI() {
-  const mode = g('tc-mode');
+  const mode = g('tc-verificationMode');
   const showCmp  = mode === 'comparison' || mode === 'both';
   const showAuto = mode === 'automation'  || mode === 'both';
   const cmpSec  = document.getElementById('cmpSection');
@@ -349,14 +349,14 @@ async function saveTestCase() {
   const cs = g('tc-caseSens'), io = g('tc-ignoreOrder'), tol = g('tc-tolerance'), cer = g('tc-compareErrorResponses');
   const hasCmp = g('tc-ignoreFields') || cs || io || tol || cer;
 
-  const mode = g('tc-mode') || 'comparison';
+  const mode = g('tc-verificationMode') || 'comparison';
   const expStatus = g('tc-expStatus'), expBody = g('tc-expBody'),
         expHeaders = g('tc-expHeaders'), maxRt = g('tc-maxRt');
   const hasAuto = expStatus || expBody || expHeaders || maxRt;
 
   const tc = {
     id: g('tc-id'), name: g('tc-name'), description: g('tc-desc'),
-    enabled: g('tc-enabled') === 'true', testMode: mode, method: g('tc-method'),
+    enabled: g('tc-enabled') === 'true', verificationMode: mode, method: g('tc-method'),
     endpoint: g('tc-endpoint'), author: g('tc-author'),
     jsonBody: g('tc-body'), headers: g('tc-headers'),
     queryParams: parseLines(g('tc-query')),

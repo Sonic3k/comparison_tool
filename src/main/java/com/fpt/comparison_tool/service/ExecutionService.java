@@ -91,14 +91,16 @@ public class ExecutionService {
     private void executeAndRecord(TestCase tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress) {
-        TestMode testMode = tc.getTestMode() != null ? tc.getTestMode() : TestMode.COMPARISON;
-        String timestamp  = LocalDateTime.now().format(TIMESTAMP_FMT);
+        // Resolve effective VerificationMode — suite-level overrides per-TC if set
+        VerificationMode verificationMode = suite.getSettings().getExecutionConfig()
+                .resolveVerificationMode(tc.getVerificationMode());
+        String timestamp = LocalDateTime.now().format(TIMESTAMP_FMT);
 
         try {
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
             AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
 
-            switch (testMode) {
+            switch (verificationMode) {
                 case COMPARISON -> runComparison(tc, group, suite, sourceEnv, targetEnv, progress, delayMs, timestamp);
                 case AUTOMATION -> runAutomation(tc, group, suite, targetEnv, targetAuth, progress, timestamp);
                 case BOTH       -> runBoth(tc, group, suite, sourceEnv, targetEnv, progress, delayMs, timestamp);
@@ -107,7 +109,7 @@ public class ExecutionService {
         } catch (Exception e) {
             TestResult r = new TestResult();
             r.setStatus(ExecutionStatus.ERROR);
-            r.setModeRun(testMode.getValue());
+            r.setModeRun(verificationMode.getValue());
             r.setComparisonResult("Execution error: " + e.getMessage());
             r.setExecutedAt(timestamp);
             tc.setResult(r);
@@ -135,7 +137,7 @@ public class ExecutionService {
         String tgtBody = targetResp.getBody();
 
         TestResult r = new TestResult();
-        r.setModeRun(TestMode.COMPARISON.getValue());
+        r.setModeRun(VerificationMode.COMPARISON.getValue());
         r.setSourceStatus(String.valueOf(srcStatus));
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setSourceResponse(srcBody);
@@ -177,7 +179,7 @@ public class ExecutionService {
         String tgtBody = targetResp.getBody();
 
         TestResult r = new TestResult();
-        r.setModeRun(TestMode.AUTOMATION.getValue());
+        r.setModeRun(VerificationMode.AUTOMATION.getValue());
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setTargetResponse(tgtBody);
         r.setExecutedAt(timestamp);
@@ -224,7 +226,7 @@ public class ExecutionService {
         String tgtBody = targetResp.getBody();
 
         TestResult r = new TestResult();
-        r.setModeRun(TestMode.BOTH.getValue());
+        r.setModeRun(VerificationMode.BOTH.getValue());
         r.setSourceStatus(String.valueOf(srcStatus));
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setSourceResponse(srcBody);

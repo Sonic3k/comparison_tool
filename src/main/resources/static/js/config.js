@@ -1,11 +1,14 @@
 // ─── Settings ─────────────────────────────────────────────────────────────────
 async function saveSettings() {
+  const vmVal = g('s-verificationMode');
   const res = await api('PUT', '/suite/settings', {
     suiteName: g('s-name'), description: g('s-desc'), version: g('s-version'),
     createdBy: g('s-createdBy'), createdDate: g('s-createdDate'),
     lastUpdatedBy: g('s-updatedBy'), lastUpdatedDate: g('s-updatedDate'),
     executionConfig: {
-      mode: g('s-mode'), timeout: +g('s-timeout'), parallelLimit: +g('s-parallelLimit'),
+      mode: g('s-mode'),
+      verificationMode: vmVal || null,
+      timeout: +g('s-timeout'), parallelLimit: +g('s-parallelLimit'),
       delayBetweenRequests: +g('s-delay'), retries: +g('s-retries'),
       sourceEnvironment: g('s-sourceEnv'), targetEnvironment: g('s-targetEnv')
     },

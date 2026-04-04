@@ -47,6 +47,7 @@ public class ExcelGenerator {
             { "Basic Info", "Last Updated Date",    nvl(st.getLastUpdatedDate()), "Last update date" },
             { "", "", "", "" },
             { "Execution", "Mode",                  ec.getMode() != null ? ec.getMode().toValue() : "parallel", "parallel or source_first" },
+            { "Execution", "Verification Mode",      ec.getVerificationMode() != null ? ec.getVerificationMode().getValue() : "", "Suite-level override: comparison / automation / both. Blank = use per-TC setting" },
             { "Execution", "Timeout",               String.valueOf(ec.getTimeout()),              "Request timeout in seconds" },
             { "Execution", "Parallel Limit",        String.valueOf(ec.getParallelLimit()),        "Max concurrent requests" },
             { "Execution", "Delay Between Requests",String.valueOf(ec.getDelayBetweenRequests()), "Delay in milliseconds" },
@@ -177,7 +178,7 @@ public class ExcelGenerator {
         // Row 6: column headers (26 cols)
         String[] headers = {
             // GREEN 0-11
-            "ID", "Name", "Description", "Enabled", "Mode", "Method", "Endpoint",
+            "ID", "Name", "Description", "Enabled", "Verification Mode", "Method", "Endpoint",
             "Query Params", "Form Params", "JSON Body", "Headers", "Author",
             // TEAL 12-16
             "Ignore Fields", "Ignore Array Order", "Compare Error Responses",
@@ -203,7 +204,7 @@ public class ExcelGenerator {
             row.createCell(1).setCellValue(nvl(tc.getName()));
             row.createCell(2).setCellValue(nvl(tc.getDescription()));
             row.createCell(3).setCellValue(String.valueOf(tc.isEnabled()).toUpperCase());
-            row.createCell(4).setCellValue(tc.getTestMode() != null ? tc.getTestMode().getValue() : "comparison");
+            row.createCell(4).setCellValue(tc.getVerificationMode() != null ? tc.getVerificationMode().getValue() : "comparison");
             row.createCell(5).setCellValue(tc.getMethod() != null ? tc.getMethod().name() : "GET");
             row.createCell(6).setCellValue(nvl(tc.getEndpoint()));
             row.createCell(7).setCellValue(tc.getQueryParamsAsString());

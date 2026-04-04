@@ -22,7 +22,7 @@ public class TestCase {
 
     /** Whether to run comparison, automation, or both. Default = comparison. */
     @JacksonXmlProperty(isAttribute = true)
-    private TestMode testMode = TestMode.COMPARISON;
+    private VerificationMode verificationMode = VerificationMode.COMPARISON;
 
     @JacksonXmlProperty(isAttribute = true)
     private HttpMethod method;
@@ -50,7 +50,7 @@ public class TestCase {
 
     public TestCase() {
         this.enabled = true;
-        this.testMode = TestMode.COMPARISON;
+        this.verificationMode = VerificationMode.COMPARISON;
         this.queryParams = new ArrayList<>();
         this.formParams = new ArrayList<>();
         this.result = new TestResult();
@@ -62,7 +62,7 @@ public class TestCase {
         this.name = name;
         this.description = description;
         this.enabled = enabled;
-        this.testMode = TestMode.COMPARISON;
+        this.verificationMode = VerificationMode.COMPARISON;
         this.method = method;
         this.endpoint = endpoint;
         this.author = author;
@@ -111,8 +111,8 @@ public class TestCase {
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
-    public TestMode getTestMode() { return testMode; }
-    public void setTestMode(TestMode testMode) { this.testMode = testMode != null ? testMode : TestMode.COMPARISON; }
+    public VerificationMode getVerificationMode() { return verificationMode; }
+    public void setVerificationMode(VerificationMode verificationMode) { this.verificationMode = verificationMode != null ? verificationMode : VerificationMode.COMPARISON; }
 
     public HttpMethod getMethod() { return method; }
     public void setMethod(HttpMethod method) { this.method = method; }

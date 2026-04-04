@@ -10,9 +10,15 @@ public class ExecutionConfig {
     private String sourceEnvironment;
     private String targetEnvironment;
 
+    /**
+     * Suite-level Verification Mode override.
+     * null (default) = use each TC's own verificationMode.
+     * If set, overrides ALL TCs to run the specified mode.
+     */
+    private VerificationMode verificationMode;
+
     public ExecutionConfig() {}
 
-    /** Legacy 5-arg constructor — kept for backward compatibility */
     public ExecutionConfig(ExecutionMode mode, int timeout, int parallelLimit,
                            int delayBetweenRequests, int retries) {
         this.mode                 = mode;
@@ -50,4 +56,13 @@ public class ExecutionConfig {
 
     public String getTargetEnvironment()       { return targetEnvironment; }
     public void setTargetEnvironment(String v) { this.targetEnvironment = v; }
+
+    public VerificationMode getVerificationMode()           { return verificationMode; }
+    public void setVerificationMode(VerificationMode v)     { this.verificationMode = v; }
+
+    /** Resolve effective VerificationMode for a TC — suite-level wins if set. */
+    public VerificationMode resolveVerificationMode(VerificationMode tcMode) {
+        if (verificationMode != null) return verificationMode;
+        return tcMode != null ? tcMode : VerificationMode.COMPARISON;
+    }
 }

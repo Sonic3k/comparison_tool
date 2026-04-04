@@ -179,6 +179,7 @@ function renderSuite() {
   sv('s-createdDate', s.createdDate); sv('s-updatedBy', s.lastUpdatedBy);
   sv('s-updatedDate', s.lastUpdatedDate);
   sv('s-mode', ec.mode || 'PARALLEL'); sv('s-timeout', ec.timeout);
+  sv('s-verificationMode', ec.verificationMode || '');
   sv('s-parallelLimit', ec.parallelLimit); sv('s-delay', ec.delayBetweenRequests);
   sv('s-retries', ec.retries);
   sv('s-ignoreFields', cc.ignoreFieldsRaw);

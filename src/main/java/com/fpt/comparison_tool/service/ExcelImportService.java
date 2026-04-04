@@ -93,6 +93,7 @@ public class ExcelImportService {
                 case "Retries"                 -> ec.setRetries(parseInt(value, 2));
                 case "Source Environment"      -> ec.setSourceEnvironment(value);
                 case "Target Environment"      -> ec.setTargetEnvironment(value);
+                case "Verification Mode"       -> ec.setVerificationMode(value.isBlank() ? null : VerificationMode.from(value));
                 case "Ignore Fields"           -> cc.setIgnoreFieldsRaw(value);
                 case "Case Sensitive"          -> cc.setCaseSensitive(Boolean.parseBoolean(value));
                 case "Ignore Array Order"      -> cc.setIgnoreArrayOrder(Boolean.parseBoolean(value));
@@ -200,7 +201,7 @@ public class ExcelImportService {
         tc.setName(cell(row, 1));
         tc.setDescription(cell(row, 2));
         tc.setEnabled(Boolean.parseBoolean(cell(row, 3)));
-        tc.setTestMode(TestMode.from(cell(row, 4)));        // NEW: Mode col
+        tc.setVerificationMode(VerificationMode.from(cell(row, 4)));        // NEW: Mode col
         tc.setMethod(parseEnum(HttpMethod.class, cell(row, 5), HttpMethod.GET));
         tc.setEndpoint(cell(row, 6));
         tc.setQueryParams(parseParams(cell(row, 7)));

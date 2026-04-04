@@ -98,8 +98,16 @@
       <div class="box">
         <div class="box-title">Execution Config</div>
         <div class="form-grid">
-          <div class="form-group"><label>Mode</label>
+          <div class="form-group"><label>Execution Mode</label>
             <select id="s-mode"><option value="PARALLEL">Parallel</option><option value="SOURCE_FIRST">Source First</option></select>
+          </div>
+          <div class="form-group"><label>Verification Mode <span class="form-hint">— suite-level override</span></label>
+            <select id="s-verificationMode">
+              <option value="">— per TC (default) —</option>
+              <option value="comparison">Comparison only</option>
+              <option value="automation">Automation only</option>
+              <option value="both">Both</option>
+            </select>
           </div>
           <div class="form-group"><label>Timeout (s)</label><input id="s-timeout" type="number"/></div>
           <div class="form-group"><label>Parallel Limit</label><input id="s-parallelLimit" type="number"/></div>
@@ -360,8 +368,8 @@
       <div class="form-group"><label>Enabled</label>
         <select id="tc-enabled"><option value="true">Yes</option><option value="false">No</option></select>
       </div>
-      <div class="form-group"><label>Mode</label>
-        <select id="tc-mode" onchange="updateModeUI()">
+      <div class="form-group"><label>Verification Mode</label>
+        <select id="tc-verificationMode" onchange="updateModeUI()">
           <option value="comparison">Comparison — compare source vs target</option>
           <option value="automation">Automation — assert target only</option>
           <option value="both">Both — compare + assert target</option>
