@@ -59,10 +59,4 @@ public class ExecutionConfig {
 
     public VerificationMode getVerificationMode()           { return verificationMode; }
     public void setVerificationMode(VerificationMode v)     { this.verificationMode = v; }
-
-    /** Resolve effective VerificationMode for a TC — suite-level wins if set. */
-    public VerificationMode resolveVerificationMode(VerificationMode tcMode) {
-        if (verificationMode != null) return verificationMode;
-        return tcMode != null ? tcMode : VerificationMode.COMPARISON;
-    }
 }

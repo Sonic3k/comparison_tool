@@ -40,8 +40,15 @@ public class ExecutionService {
 
     public void startAsync(TestSuite suite, List<String> groupFilter, ExecutionProgress progress) {
         List<TestGroup> groups = filterGroups(suite, groupFilter);
+        ExecutionConfig ec0 = suite.getSettings().getExecutionConfig();
+        VerificationMode suiteFilter = ec0.getVerificationMode(); // null = run all
+
+        // Count only TCs that will actually run under the suite filter
         int total = groups.stream()
-                .mapToInt(g -> (int) g.getTestCases().stream().filter(TestCase::isEnabled).count())
+                .mapToInt(g -> (int) g.getTestCases().stream()
+                        .filter(TestCase::isEnabled)
+                        .filter(tc -> !shouldSkip(tc, suiteFilter))
+                        .count())
                 .sum();
         progress.start(total);
 
@@ -49,12 +56,13 @@ public class ExecutionService {
             try {
                 ExecutionConfig ec = suite.getSettings().getExecutionConfig();
                 ExecutionMode mode = ec.getMode();
+                VerificationMode filter = ec.getVerificationMode();
 
                 Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
                 Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
 
                 for (TestGroup group : groups) {
-                    executeGroup(group, suite, mode, sourceEnv, targetEnv, progress);
+                    executeGroup(group, suite, mode, filter, sourceEnv, targetEnv, progress);
                 }
             } catch (Exception e) {
                 progress.abort("Unexpected error: " + e.getMessage());
@@ -67,23 +75,47 @@ public class ExecutionService {
     // ── Group ──────────────────────────────────────────────────────────────────
 
     private void executeGroup(TestGroup group, TestSuite suite, ExecutionMode execMode,
+                              VerificationMode suiteFilter,
                               Environment sourceEnv, Environment targetEnv,
                               ExecutionProgress progress) {
-        List<TestCase> enabled = group.getTestCases().stream()
-                .filter(TestCase::isEnabled).collect(Collectors.toList());
+        // Filter: skip TCs that don't match suite-level Verification Mode
+        // Skipped TCs keep their current result (pending) — no API call made
+        List<TestCase> toRun = group.getTestCases().stream()
+                .filter(TestCase::isEnabled)
+                .filter(tc -> !shouldSkip(tc, suiteFilter))
+                .collect(Collectors.toList());
 
         if (execMode == ExecutionMode.PARALLEL) {
-            List<CompletableFuture<Void>> futures = enabled.stream()
+            List<CompletableFuture<Void>> futures = toRun.stream()
                     .map(tc -> CompletableFuture.runAsync(
                             () -> executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress),
                             executor))
                     .collect(Collectors.toList());
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         } else {
-            for (TestCase tc : enabled) {
+            for (TestCase tc : toRun) {
                 executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress);
             }
         }
+    }
+
+    /**
+     * Should this TC be skipped under the given suite Verification Mode filter?
+     *
+     * null filter = run all.
+     * COMPARISON  = run only comparison + both TCs  (skip automation-only)
+     * AUTOMATION  = run only automation + both TCs  (skip comparison-only)
+     * BOTH        = run only both TCs               (skip comparison-only and automation-only)
+     */
+    private boolean shouldSkip(TestCase tc, VerificationMode suiteFilter) {
+        if (suiteFilter == null) return false;
+        VerificationMode tcMode = tc.getVerificationMode() != null
+                ? tc.getVerificationMode() : VerificationMode.COMPARISON;
+        return switch (suiteFilter) {
+            case COMPARISON -> tcMode == VerificationMode.AUTOMATION;
+            case AUTOMATION -> tcMode == VerificationMode.COMPARISON;
+            case BOTH       -> tcMode != VerificationMode.BOTH;
+        };
     }
 
     // ── Single TC ──────────────────────────────────────────────────────────────
@@ -91,9 +123,9 @@ public class ExecutionService {
     private void executeAndRecord(TestCase tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress) {
-        // Resolve effective VerificationMode — suite-level overrides per-TC if set
-        VerificationMode verificationMode = suite.getSettings().getExecutionConfig()
-                .resolveVerificationMode(tc.getVerificationMode());
+        // TC has already been filtered by shouldSkip() — use its own VerificationMode
+        VerificationMode verificationMode = tc.getVerificationMode() != null
+                ? tc.getVerificationMode() : VerificationMode.COMPARISON;
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FMT);
 
         try {
