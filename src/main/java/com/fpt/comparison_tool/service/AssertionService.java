@@ -150,11 +150,14 @@ public class AssertionService {
         }
 
         String fieldExpr = remainder.startsWith(".") ? remainder.substring(1) : remainder;
-        ParsedOp parsed = parseOp(fieldExpr.split("\\s+", -1), 0);
+        // parts[0] = fieldPath, parts[1..] = op + rhs
+        String[] fParts = fieldExpr.split("\\s+", -1);
+        String fieldPath = fParts[0];
+        ParsedOp parsed = parseOp(fParts, 1);  // BUG FIX: start from index 1, not 0
 
         List<String> failures = new ArrayList<>();
         for (JsonNode el : matched) {
-            JsonNode node = parsed.field.isEmpty() ? el : resolvePath(el, parsed.field);
+            JsonNode node = fieldPath.isBlank() ? el : resolvePath(el, fieldPath);
             AssertionLine r = checkAssertion(raw, node, parsed.op, parsed.rhs);
             if (!r.passed()) failures.add(r.reason());
         }
