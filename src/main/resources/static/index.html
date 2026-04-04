@@ -1,496 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>API Comparison Tool</title>
-  <link rel="stylesheet" href="/style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/components.css">
 </head>
 <body>
+<div id="app">
 
-<!-- ─── Header ───────────────────────────────────────────────────────────── -->
-<header>
-  <h1>⚡ API Comparison Tool</h1>
-  <span class="suite-badge" id="suiteBadge">No suite loaded</span>
-  <div class="export-wrap" id="exportWrap" style="display:none">
-    <button class="export-btn" onclick="toggleExport()">⬇ Export ▾</button>
-    <div class="export-menu" id="exportMenu">
-      <a href="/api/export/excel">📊 Download Excel (.xlsx)</a>
-      <a href="/api/export/xml">📄 Download XML</a>
-      <div class="divider"></div>
-      <a href="/api/export/template/excel">📋 Excel Template</a>
-      <a href="/api/export/template/xml">🗂 XML Template</a>
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-logo" onclick="navigate('suites')" title="API Comparison Tool">⚡</div>
+    <div class="nav-item" data-page="suites" onclick="navigate('suites')">📂<div class="nav-tooltip">Suites</div></div>
+    <div class="nav-item" data-page="groups" onclick="navigate('groups')">⊞<div class="nav-tooltip">Groups</div></div>
+    <div class="nav-item" data-page="results" onclick="navigate('results')">
+      📊
+      <div class="nav-badge" id="tasksBadge" style="display:none">0</div>
+      <div class="nav-tooltip">Results</div>
     </div>
-  </div>
-  <button class="btn btn-sm" onclick="clearSuite()" id="btnClear"
-    style="display:none;background:#334155;border:1px solid #475569;color:#e2e8f0">✕ Clear</button>
-</header>
+    <div class="nav-spacer"></div>
+    <div class="nav-item" data-page="config" onclick="navigate('config')">⚙<div class="nav-tooltip">Config</div></div>
+  </aside>
 
-<!-- ─── Landing ──────────────────────────────────────────────────────────── -->
-<div id="landing" class="page active">
-  <div class="landing-cards">
-    <div class="lcard">
-      <div class="lcard-icon">📂</div>
-      <h2>Import Suite</h2>
-      <p>Upload an existing test suite from Excel (.xlsx) or XML file.</p>
-      <p style="font-size:12px;color:var(--gray-text);margin-top:4px">— or drag & drop anywhere on the page —</p>
-      <label class="btn btn-primary" style="justify-content:center;margin-top:16px;cursor:pointer;width:100%">
-        📁 Choose File
-        <input type="file" id="importFileInput" accept=".xlsx,.xls,.xml" style="display:none" onchange="importFile(this)">
-      </label>
-    </div>
-    <div class="lcard" onclick="openModal('createModal')">
-      <div class="lcard-icon">✏️</div>
-      <h2>Create New</h2>
-      <p>Start from scratch — enter suite details and add test groups manually.</p>
-      <div class="btn btn-green" style="justify-content:center;margin-top:20px;width:100%">+ New Suite</div>
-    </div>
-  </div>
-  <div class="template-links">
-    Sample templates: <a href="/api/export/template/excel">📊 Excel</a> <a href="/api/export/template/xml">📄 XML</a>
-  </div>
-</div>
+  <!-- Header -->
+  <header id="header">
+    <div class="header-breadcrumb" id="breadcrumb"><span class="breadcrumb-current">Suites</span></div>
 
-<!-- ─── Suite View ────────────────────────────────────────────────────────── -->
-<div id="suite" class="page">
-  <nav class="sidebar">
-    <div class="sidebar-nav">
-      <div class="nav-item" id="nav-settings"     onclick="showPanel('settings')"    ><span class="icon">⚙️</span> Settings</div>
-      <div class="nav-item" id="nav-environment"  onclick="showPanel('environment')" ><span class="icon">🌐</span> Environments</div>
-      <div class="nav-item" id="nav-authProfiles" onclick="showPanel('authProfiles')"><span class="icon">🔑</span> Auth Profiles</div>
-      <div class="nav-item" id="nav-groups"       onclick="showPanel('groups')"      ><span class="icon">📋</span> Test Cases</div>
-      <div class="nav-item" id="nav-results"      onclick="showPanel('results')"     ><span class="icon">📊</span> Results</div>
-    </div>
-    <div class="sidebar-bottom">
-      <button class="btn btn-green" style="width:100%" onclick="runAll()">▶ Run All</button>
-    </div>
-  </nav>
-
-  <div class="main">
-    <!-- Progress -->
-    <div id="progressBox">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-        <span style="font-weight:600;font-size:13px">⚡ Executing...</span>
-        <span style="font-size:12px;color:#6b7280" id="progressLabel">0 / 0</span>
+    <div class="dropdown-wrap">
+      <div class="header-suite-selector" onclick="toggleSuiteDropdown()">
+        <div class="suite-dot"></div>
+        <span id="suiteSelectorLabel">Select suite</span>
+        <span style="font-size:10px;color:var(--t-muted);margin-left:4px">▾</span>
       </div>
-      <div class="pb-wrap"><div class="pb-fill" id="progressBar" style="width:0%"></div></div>
-      <div style="font-size:12px;color:#9ca3af;margin-top:6px" id="progressDetail"></div>
+      <div class="dropdown-menu hidden" id="suiteDropdownMenu"></div>
     </div>
 
-    <!-- Settings -->
-    <div class="panel" id="panel-settings">
-      <div class="section-header">
-        <div class="section-title">Settings</div>
-        <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Changes</button>
-      </div>
-      <div class="box">
-        <div class="box-title">Suite Info</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Suite Name</label><input id="s-name"/></div>
-          <div class="form-group"><label>Version</label><input id="s-version"/></div>
-          <div class="form-group form-full"><label>Description</label><textarea id="s-desc" rows="2"></textarea></div>
-          <div class="form-group"><label>Created By</label><input id="s-createdBy"/></div>
-          <div class="form-group"><label>Created Date</label><input id="s-createdDate"/></div>
-          <div class="form-group"><label>Last Updated By</label><input id="s-updatedBy"/></div>
-          <div class="form-group"><label>Last Updated Date</label><input id="s-updatedDate"/></div>
-        </div>
-      </div>
-      <div class="box">
-        <div class="box-title">Execution Config</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Execution Mode</label>
-            <select id="s-mode"><option value="PARALLEL">Parallel</option><option value="SOURCE_FIRST">Source First</option></select>
-          </div>
-          <div class="form-group"><label>Verification Mode <span class="form-hint">— suite-level override</span></label>
-            <select id="s-verificationMode">
-              <option value="">— per TC (default) —</option>
-              <option value="comparison">Comparison only</option>
-              <option value="automation">Automation only</option>
-              <option value="both">Both</option>
-            </select>
-          </div>
-          <div class="form-group"><label>Timeout (s)</label><input id="s-timeout" type="number"/></div>
-          <div class="form-group"><label>Parallel Limit</label><input id="s-parallelLimit" type="number"/></div>
-          <div class="form-group"><label>Delay Between Requests (ms)</label><input id="s-delay" type="number"/></div>
-          <div class="form-group"><label>Retries</label><input id="s-retries" type="number"/></div>
-        </div>
-      </div>
-      <div class="box" style="border-left:3px solid var(--teal)">
-        <div class="box-title" style="color:var(--teal)">⚡ Execution Strategy</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Source Environment</label><select id="s-sourceEnv"><option value="">— select —</option></select></div>
-          <div class="form-group"><label>Target Environment</label><select id="s-targetEnv"><option value="">— select —</option></select></div>
-        </div>
-      </div>
-      <div class="box">
-        <div class="box-title">Comparison Config</div>
-        <div class="form-grid">
-          <div class="form-group form-full"><label>Ignore Fields <span class="form-hint">— comma-separated</span></label><input id="s-ignoreFields"/></div>
-          <div class="form-group"><label>Case Sensitive</label>
-            <select id="s-caseSensitive"><option value="true">Yes</option><option value="false">No</option></select></div>
-          <div class="form-group"><label>Ignore Array Order</label>
-            <select id="s-ignoreArrayOrder"><option value="false">No</option><option value="true">Yes</option></select></div>
-          <div class="form-group"><label>Numeric Tolerance</label><input id="s-tolerance" type="number" step="0.001"/></div>
-          <div class="form-group form-full"><label>Compare Error Responses <span class="form-hint">— when ON: 4xx/5xx are captured and compared; when OFF: 5xx = execution error</span></label>
-            <select id="s-compareErrorResponses"><option value="false">OFF — 5xx treated as error (default)</option><option value="true">ON — capture and compare all responses</option></select></div>
-        </div>
-      </div>
+    <div class="vm-bar" title="Verification Mode filter for new task runs">
+      <button class="vm-btn active" data-vm="all" onclick="setVm('all')">ALL</button>
+      <button class="vm-btn" data-vm="comparison" onclick="setVm('comparison')">CMP</button>
+      <button class="vm-btn" data-vm="automation" onclick="setVm('automation')">AUTO</button>
+      <button class="vm-btn" data-vm="both" onclick="setVm('both')">BOTH</button>
     </div>
 
-    <!-- Environments -->
-    <div class="panel" id="panel-environment">
-      <div class="section-header">
-        <div class="section-title">Environments</div>
-        <button class="btn btn-primary btn-sm" onclick="showEnvModal()">+ Add Environment</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Name</th><th>URL</th><th>Auth Profile</th><th>Headers</th><th></th></tr></thead>
-          <tbody id="envTable"></tbody>
-        </table>
+    <div class="run-btn-group">
+      <button class="run-btn-main" onclick="runSuite([])">▶ Run</button>
+      <div class="dropdown-wrap">
+        <button class="run-btn-drop" onclick="toggleRunGroupDropdown()">▾</button>
+        <div class="dropdown-menu hidden" id="headerRunDropMenu"></div>
       </div>
     </div>
+  </header>
 
-    <!-- Auth Profiles -->
-    <div class="panel" id="panel-authProfiles">
-      <div class="section-header">
-        <div class="section-title">Auth Profiles</div>
-        <button class="btn btn-primary btn-sm" onclick="showAuthModal()">+ Add Profile</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Token URL</th><th></th></tr></thead>
-          <tbody id="authProfilesTable"></tbody>
-        </table>
-      </div>
+  <!-- Main -->
+  <main id="main"></main>
+
+  <!-- Task Monitor -->
+  <div id="monitor">
+    <div class="monitor-bar" onclick="toggleMonitor()">
+      <span class="monitor-label" id="monitorLabel">No active tasks</span>
+      <div class="monitor-chips" id="monitorChips"></div>
+      <button class="monitor-toggle" id="monitorToggle">▲</button>
     </div>
-
-    <!-- Test Cases -->
-    <div class="panel" id="panel-groups">
-      <div class="section-header">
-        <div class="section-title">Test Cases</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div class="search-wrap">
-            <span class="search-icon">🔍</span>
-            <input id="groupSearch" placeholder="Search groups..." style="width:180px" oninput="filterGroups()"/>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="openImportGroupModal()">+ Add Group</button>
-        </div>
-      </div>
-
-      <!-- Suite Results Summary — shown when any TC has been executed -->
-      <div id="suiteSummaryBar" style="display:none;background:#f8fafc;border:1px solid var(--gray-border);border-radius:10px;padding:14px 18px;margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-weight:600;font-size:13px;color:#374151">📊 Suite Results</span>
-          <span id="summaryPassRate" style="font-size:13px;font-weight:700;color:#059669"></span>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-          <div class="sum-pill sum-total"  id="sum-total" ><span class="sum-n" id="sn-total"></span><span class="sum-l">Total</span></div>
-          <div class="sum-pill sum-pass"   id="sum-pass"  ><span class="sum-n" id="sn-pass"></span><span class="sum-l">Passed</span></div>
-          <div class="sum-pill sum-fail"   id="sum-fail"  ><span class="sum-n" id="sn-fail"></span><span class="sum-l">Failed</span></div>
-          <div class="sum-pill sum-error"  id="sum-error" ><span class="sum-n" id="sn-error"></span><span class="sum-l">Error</span></div>
-          <div class="sum-pill sum-pend"   id="sum-pend"  ><span class="sum-n" id="sn-pend"></span><span class="sum-l">Pending</span></div>
-        </div>
-        <div style="background:#e5e7eb;border-radius:999px;height:8px;overflow:hidden;display:flex">
-          <div id="bar-pass"  style="background:#10b981;height:100%;transition:width .4s"></div>
-          <div id="bar-fail"  style="background:#ef4444;height:100%;transition:width .4s"></div>
-          <div id="bar-error" style="background:#f97316;height:100%;transition:width .4s"></div>
-        </div>
-      </div>
-
-      <div class="group-grid" id="groupGrid"></div>
-    </div>
-
-    <!-- Results -->
-    <div class="panel" id="panel-results">
-      <div class="section-header">
-        <div class="section-title">📊 Results</div>
-        <span id="resultsRunAt" style="font-size:12px;color:#9ca3af"></span>
-      </div>
-
-      <!-- Overall summary -->
-      <div class="box" id="resultsSummaryBox" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div>
-            <div style="font-size:24px;font-weight:800;color:#111" id="resultsPassRate"></div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">overall pass rate</div>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <div class="sum-pill sum-total" ><span class="sum-n" id="rs-total"></span><span class="sum-l">Total</span></div>
-            <div class="sum-pill sum-pass"  ><span class="sum-n" id="rs-pass"></span><span class="sum-l">Passed</span></div>
-            <div class="sum-pill sum-fail"  ><span class="sum-n" id="rs-fail"></span><span class="sum-l">Failed</span></div>
-            <div class="sum-pill sum-error" ><span class="sum-n" id="rs-error"></span><span class="sum-l">Error</span></div>
-            <div class="sum-pill sum-pend"  ><span class="sum-n" id="rs-pend"></span><span class="sum-l">Pending</span></div>
-          </div>
-        </div>
-        <!-- Stacked bar -->
-        <div style="background:#e5e7eb;border-radius:999px;height:10px;overflow:hidden;display:flex;margin-bottom:6px">
-          <div id="rs-bar-pass"  style="background:#10b981;height:100%;transition:width .5s"></div>
-          <div id="rs-bar-fail"  style="background:#ef4444;height:100%;transition:width .5s"></div>
-          <div id="rs-bar-error" style="background:#f97316;height:100%;transition:width .5s"></div>
-        </div>
-        <div style="display:flex;gap:12px;font-size:11px;color:#9ca3af">
-          <span>🟢 Passed</span><span>🔴 Failed</span><span>🟠 Error</span>
-        </div>
-      </div>
-
-      <!-- Per-group breakdown -->
-      <div id="resultsGroupBreakdown"></div>
-
-      <div id="resultsEmpty" style="text-align:center;padding:60px 0;color:#9ca3af">
-        <div style="font-size:40px;margin-bottom:12px">🏁</div>
-        <div style="font-weight:600;margin-bottom:6px">No results yet</div>
-        <div style="font-size:13px">Run your test suite to see results here</div>
-      </div>
-    </div>
-
-    <!-- Group Detail -->
-    <div class="panel" id="panel-groupDetail">
-      <div class="breadcrumb">
-        <span class="crumb-link" onclick="showPanel('groups')">📋 Test Cases</span>
-        <span style="color:#d1d5db">›</span>
-        <span id="breadcrumbGroup" style="color:var(--gray);font-weight:500"></span>
-      </div>
-      <div class="section-header" style="margin-top:8px">
-        <div>
-          <div class="section-title" id="detailGroupName"></div>
-          <div class="section-sub"   id="detailGroupSub"></div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-teal btn-sm"    id="btnRunGroup">▶ Run Group</button>
-          <button class="btn btn-outline btn-sm" id="btnAddCase">+ Add Case</button>
-          <button class="btn btn-outline btn-sm" id="btnExportGroupXml">⬇ XML</button>
-          <button class="btn btn-sm toggle-on"   id="btnToggleGroup" onclick="toggleGroup(currentGroup)">● Disable Group</button>
-          <button class="btn btn-outline btn-sm" style="color:var(--red)" id="btnDeleteGroup">Delete Group</button>
-        </div>
-      </div>
-      <div id="detailStats"></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th style="width:28px"></th>
-            <th>ID</th><th>Name</th><th>Method</th><th>Endpoint</th>
-            <th>Status</th><th>Source</th><th>Target</th><th style="width:90px"></th>
-          </tr></thead>
-          <tbody id="detailCasesTable"></tbody>
-        </table>
-      </div>
-    </div>
-  </div><!-- /main -->
-</div><!-- /suite -->
-
-<!-- ─── Modals ────────────────────────────────────────────────────────────── -->
-<div class="overlay" id="createModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">New Test Suite</span><button class="modal-close" onclick="closeModal('createModal')">×</button></div>
-    <div class="form-grid">
-      <div class="form-group form-full"><label>Suite Name *</label><input id="cm-name" placeholder="My API Regression Tests"/></div>
-      <div class="form-group form-full"><label>Description</label><textarea id="cm-desc" rows="2"></textarea></div>
-      <div class="form-group"><label>Version</label><input id="cm-version" value="1.0"/></div>
-      <div class="form-group"><label>Author</label><input id="cm-author"/></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('createModal')">Cancel</button>
-      <button class="btn btn-green"   onclick="createSuite()">Create Suite</button>
-    </div>
+    <div class="monitor-expanded-area" id="monitorExpandedArea"></div>
   </div>
 </div>
 
+<div id="toast-container"></div>
 
-<div class="overlay" id="envModal">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header">
-      <span class="modal-title" id="envModalTitle">Add Environment</span>
-      <button class="modal-close" onclick="closeModal('envModal')">×</button>
-    </div>
-    <div class="form-grid">
-      <div class="form-group form-full"><label>Name *</label><input id="env-name" placeholder="e.g. Legacy SIT, New Dev"/></div>
-      <div class="form-group form-full"><label>URL</label><input id="env-url" placeholder="https://api.company.com"/></div>
-      <div class="form-group form-full"><label>Auth Profile</label><input id="env-auth" placeholder="Profile name from Auth Profiles"/></div>
-      <div class="form-group form-full">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <label style="margin:0">Default Headers</label>
-          <button class="btn btn-outline btn-xs" onclick="addEnvHeaderRow()">+ Add Header</button>
-        </div>
-        <table style="width:100%">
-          <thead><tr><th>Header Name</th><th>Value</th><th style="width:32px"></th></tr></thead>
-          <tbody id="envHeadersBody"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('envModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEnvironment()">Save</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="authModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title" id="authModalTitle">Add Auth Profile</span><button class="modal-close" onclick="closeModal('authModal')">×</button></div>
-    <div class="form-grid">
-      <div class="form-group form-full"><label>Profile Name *</label><input id="ap-name"/></div>
-      <div class="form-group form-full">
-        <label>Auth Type</label>
-        <select id="ap-type" onchange="onAuthTypeChange()">
-          <option value="NONE">None</option><option value="BASIC">Basic Auth</option>
-          <option value="BEARER">Bearer Token</option><option value="CLIENT_CREDENTIALS">OAuth2 Client Credentials</option>
-        </select>
-      </div>
-      <div class="form-group form-full"><label>Description</label><input id="ap-desc"/></div>
-      <div class="form-group form-full" id="ap-tokenUrl-wrap"><label>Token URL</label><input id="ap-tokenUrl"/></div>
-      <div class="form-group" id="ap-user-wrap"><label>Username</label><input id="ap-username"/></div>
-      <div class="form-group" id="ap-pass-wrap"><label>Password</label><input id="ap-password" type="password"/></div>
-      <div class="form-group" id="ap-cid-wrap"><label>Client ID</label><input id="ap-clientId"/></div>
-      <div class="form-group" id="ap-csec-wrap"><label>Client Secret</label><input id="ap-clientSecret" type="password"/></div>
-      <div class="form-group form-full" id="ap-scope-wrap"><label>Scope</label><input id="ap-scope"/></div>
-      <div class="form-group form-full" id="ap-token-wrap"><label>Bearer Token</label><input id="ap-token"/></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('authModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAuthProfile()">Save Profile</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="caseModal">
-  <div class="modal modal-wide">
-    <div class="modal-header"><span class="modal-title" id="caseModalTitle">Add Test Case</span><button class="modal-close" onclick="closeModal('caseModal')">×</button></div>
-    <input type="hidden" id="tc-groupName"/>
-    <input type="hidden" id="tc-isEdit" value="false"/>
-    <div class="form-grid">
-      <div class="form-group"><label>ID *</label><input id="tc-id"/></div>
-      <div class="form-group"><label>Name *</label><input id="tc-name"/></div>
-      <div class="form-group form-full"><label>Description</label><textarea id="tc-desc" rows="2"></textarea></div>
-      <div class="form-group"><label>Method</label>
-        <select id="tc-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
-      </div>
-      <div class="form-group"><label>Enabled</label>
-        <select id="tc-enabled"><option value="true">Yes</option><option value="false">No</option></select>
-      </div>
-      <div class="form-group"><label>Verification Mode</label>
-        <select id="tc-verificationMode" onchange="updateModeUI()">
-          <option value="comparison">Comparison — compare source vs target</option>
-          <option value="automation">Automation — assert target only</option>
-          <option value="both">Both — compare + assert target</option>
-        </select>
-      </div>
-      <div class="form-group form-full"><label>Endpoint</label><input id="tc-endpoint" placeholder="/api/users/123"/></div>
-      <div class="form-group form-full"><label>Query Params <span class="form-hint">— key=value, one per line</span></label><textarea id="tc-query" rows="3"></textarea></div>
-      <div class="form-group form-full"><label>Form Params <span class="form-hint">— key=value, one per line</span></label><textarea id="tc-form" rows="3"></textarea></div>
-      <div class="form-group form-full"><label>JSON Body</label><textarea id="tc-body" rows="4" style="font-family:monospace;font-size:12px"></textarea></div>
-      <div class="form-group form-full"><label>Headers <span class="form-hint">— Key: Value, one per line</span></label><textarea id="tc-headers" rows="3"></textarea></div>
-      <div class="form-group"><label>Author</label><input id="tc-author"/></div>
-    </div>
-    <div id="cmpSection" style="border-top:1px solid var(--gray-border);margin:16px -24px 0;padding:14px 24px 0">
-      <div style="font-size:13px;font-weight:600;color:#0f766e;margin-bottom:12px">
-        🔧 Comparison Override <span class="form-hint" style="font-weight:400">— leave blank = use global config</span>
-      </div>
-      <div class="form-grid">
-        <div class="form-group form-full"><label>Ignore Fields</label><input id="tc-ignoreFields" placeholder="e.g. timestamp, requestId"/></div>
-        <div class="form-group"><label>Case Sensitive</label>
-          <select id="tc-caseSens"><option value="">— global —</option><option value="true">Yes</option><option value="false">No</option></select></div>
-        <div class="form-group"><label>Ignore Array Order</label>
-          <select id="tc-ignoreOrder"><option value="">— global —</option><option value="true">Yes</option><option value="false">No</option></select></div>
-        <div class="form-group"><label>Numeric Tolerance</label><input id="tc-tolerance" placeholder="e.g. 0.001"/></div>
-        <div class="form-group form-full"><label>Compare Error Responses</label>
-          <select id="tc-compareErrorResponses"><option value="">— global —</option><option value="true">ON — capture and compare all responses</option><option value="false">OFF — 5xx treated as error</option></select></div>
-      </div>
-    </div>
-    <div id="autoSection" style="border-top:1px solid var(--gray-border);margin:16px -24px 0;padding:14px 24px 0;display:none">
-      <div style="font-size:13px;font-weight:600;color:#7c3aed;margin-bottom:12px">
-        🤖 Automation Assertions <span class="form-hint" style="font-weight:400">— validated against target response</span>
-      </div>
-      <div class="form-grid">
-        <div class="form-group"><label>Expected Status</label><input id="tc-expStatus" placeholder="e.g. 200, 404, 2xx"/></div>
-        <div class="form-group"><label>Max Response Time (ms)</label><input id="tc-maxRt" placeholder="e.g. 2000"/></div>
-        <div class="form-group form-full"><label>Expected Body Assertions <span class="form-hint">— one per line: $.field == value, $.field exists, $.array.length > 0</span></label>
-          <textarea id="tc-expBody" rows="5" style="font-family:monospace;font-size:12px" placeholder="$.id != null&#10;$.status == &quot;active&quot;&#10;$.items.length > 0&#10;$.error exists"></textarea></div>
-        <div class="form-group form-full"><label>Expected Headers <span class="form-hint">— Header: value, one per line</span></label>
-          <textarea id="tc-expHeaders" rows="2" placeholder="Content-Type: application/json"></textarea></div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('caseModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTestCase()">Save Test Case</button>
-    </div>
-  </div>
-</div>
-
-
-<div class="overlay" id="importGroupModal">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">Add Test Group</span>
-      <button class="modal-close" onclick="closeModal('importGroupModal')">×</button>
-    </div>
-
-    <div class="tab-bar">
-      <button class="tab-btn active"      onclick="switchImportTab('manual')">✏️ Manual</button>
-      <button class="tab-btn"             onclick="switchImportTab('xml')">📄 Import XML</button>
-      <button class="tab-btn coming-soon" title="Coming soon" disabled>📮 Postman<span class="badge-soon">Soon</span></button>
-      <button class="tab-btn coming-soon" title="Coming soon" disabled>🌐 HAR<span class="badge-soon">Soon</span></button>
-    </div>
-
-    <!-- Tab: Manual -->
-    <div class="tab-pane active" id="igtab-manual">
-      <div class="form-grid">
-        <div class="form-group form-full"><label>Group Name *</label><input id="ng-name"/></div>
-        <div class="form-group form-full"><label>Description</label><textarea id="ng-desc" rows="2"></textarea></div>
-        <div class="form-group form-full"><label>Owner</label><input id="ng-owner"/></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('importGroupModal')">Cancel</button>
-        <button class="btn btn-green"   onclick="createGroup()">Create Group</button>
-      </div>
-    </div>
-
-    <!-- Tab: Import XML -->
-    <div class="tab-pane" id="igtab-xml">
-      <div class="form-grid">
-        <div class="form-group form-full">
-          <label>XML File *</label>
-          <input type="file" id="ig-file" accept=".xml" style="padding:6px"/>
-        </div>
-        <div class="form-group form-full">
-          <label>If group name already exists</label>
-          <select id="ig-mode">
-            <option value="new">Abort — keep existing</option>
-            <option value="replace">Replace existing group</option>
-          </select>
-        </div>
-        <div class="form-group form-full" style="background:var(--blue-light);border-radius:6px;padding:10px 12px">
-          <p style="font-size:12px;color:#1e40af;margin:0">
-            💡 XML must be a single <code>&lt;TestGroup&gt;</code> exported from this tool.
-            Download a group XML from the group card or detail page.
-          </p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('importGroupModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="importGroupXml()">Import Group</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Full-page drop overlay — actual drop target, not just visual -->
-<div id="dropOverlay"
-     style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(37,99,235,0.15);backdrop-filter:blur(2px);pointer-events:all"
-     ondragover="event.preventDefault(); event.dataTransfer.dropEffect='copy';"
-     ondragleave="handleOverlayLeave(event)"
-     ondrop="handleOverlayDrop(event)">
-  <div style="position:absolute;inset:40px;border:3px dashed #2563eb;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none">
-    <div style="font-size:56px">📂</div>
-    <div style="font-size:22px;font-weight:700;color:#1d4ed8">Drop to Import Suite</div>
-    <div style="font-size:14px;color:#3b82f6">.xlsx or .xml</div>
-  </div>
-</div>
-
-<!-- Scripts (core → config → groups) -->
-<script src="/js/core.js"></script>
-<script src="/js/config.js"></script>
-<script src="/js/groups.js"></script>
-
+<script src="/js/app.js"></script>
+<script src="/js/page-suite.js"></script>
+<script src="/js/page-groups.js"></script>
+<script src="/js/page-testcases.js"></script>
+<script src="/js/page-results.js"></script>
+<script src="/js/page-config.js"></script>
+<script>
+function toggleRunGroupDropdown() {
+  const menu = document.getElementById('headerRunDropMenu');
+  menu.classList.toggle('hidden');
+  const suite = state.suites.find(s => s.id === state.activeSuiteId);
+  menu.innerHTML = (suite?.testGroups||[]).map(g =>
+    `<div class="dropdown-item" onclick="runSuite(['${esc(g.name)}']);document.getElementById('headerRunDropMenu').classList.add('hidden')">▶ ${esc(g.name)}</div>`
+  ).join('') +
+  `<div class="dropdown-divider"></div>
+   <div class="dropdown-item" onclick="runSuite([]);document.getElementById('headerRunDropMenu').classList.add('hidden')">▶ Run All</div>`;
+}
+initApp();
+</script>
 </body>
 </html>
