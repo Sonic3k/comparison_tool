@@ -6,7 +6,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum VerificationMode {
     COMPARISON("comparison"),
     AUTOMATION("automation"),
-    BOTH("both");
+    BOTH("both"),
+    NONE("none");
 
     private final String value;
     VerificationMode(String v) { this.value = v; }

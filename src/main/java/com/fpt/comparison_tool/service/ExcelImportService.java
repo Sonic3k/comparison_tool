@@ -17,28 +17,30 @@ import java.util.List;
  *          1  Name
  *          2  Description
  *          3  Enabled
- *          4  Mode             ← NEW
- *          5  Method
- *          6  Endpoint
- *          7  Query Params
- *          8  Form Params
- *          9  JSON Body
- *         10  Headers
- *         11  Author
- *   TEAL  12  Ignore Fields
- *         13  Ignore Array Order
- *         14  Compare Error Responses
- *         15  Numeric Tolerance
- *         16  Case Sensitive
- *   PURPLE 17  Expected Status  ← NEW
- *          18  Expected Body    ← NEW
- *          19  Expected Headers ← NEW
- *          20  Max Response Time← NEW
- *   RED   21  Overall Status
- *         22  Mode Run
- *         23  Comparison Result
- *         24  Assertion Result
- *         25  Executed At
+ *          4  Mode (verification mode)
+ *          5  Phase (setup / test / teardown)
+ *          6  Method
+ *          7  Endpoint
+ *          8  Query Params
+ *          9  Form Params
+ *         10  JSON Body
+ *         11  Headers
+ *         12  Author
+ *         13  Extract Variables
+ *   TEAL  14  Ignore Fields
+ *         15  Ignore Array Order
+ *         16  Compare Error Responses
+ *         17  Numeric Tolerance
+ *         18  Case Sensitive
+ *   PURPLE 19  Expected Status
+ *          20  Expected Body
+ *          21  Expected Headers
+ *          22  Max Response Time
+ *   RED   23  Overall Status
+ *         24  Mode Run
+ *         25  Comparison Result
+ *         26  Assertion Result
+ *         27  Executed At
  */
 @Service
 public class ExcelImportService {
@@ -196,26 +198,28 @@ public class ExcelImportService {
     private TestCase parseTestCaseRow(Row row) {
         TestCase tc = new TestCase();
 
-        // ── GREEN: cols 0-11 ──────────────────────────────────────────────────
+        // ── GREEN: cols 0-13 ─────────────────────────────────────────────────
         tc.setId(cell(row, 0));
         tc.setName(cell(row, 1));
         tc.setDescription(cell(row, 2));
         tc.setEnabled(Boolean.parseBoolean(cell(row, 3)));
-        tc.setVerificationMode(VerificationMode.from(cell(row, 4)));        // NEW: Mode col
-        tc.setMethod(parseEnum(HttpMethod.class, cell(row, 5), HttpMethod.GET));
-        tc.setEndpoint(cell(row, 6));
-        tc.setQueryParams(parseParams(cell(row, 7)));
-        tc.setFormParams(parseParams(cell(row, 8)));
-        tc.setJsonBody(cell(row, 9));
-        tc.setHeaders(cell(row, 10));
-        tc.setAuthor(cell(row, 11));
+        tc.setVerificationMode(VerificationMode.from(cell(row, 4)));
+        tc.setPhase(Phase.from(cell(row, 5)));
+        tc.setMethod(parseEnum(HttpMethod.class, cell(row, 6), HttpMethod.GET));
+        tc.setEndpoint(cell(row, 7));
+        tc.setQueryParams(parseParams(cell(row, 8)));
+        tc.setFormParams(parseParams(cell(row, 9)));
+        tc.setJsonBody(cell(row, 10));
+        tc.setHeaders(cell(row, 11));
+        tc.setAuthor(cell(row, 12));
+        tc.setExtractVariables(cell(row, 13));
 
-        // ── TEAL: cols 12-16 ─────────────────────────────────────────────────
-        String ignoreFields = cell(row, 12);
-        String ignoreOrder  = cell(row, 13);
-        String cmpErrors    = cell(row, 14);
-        String numTol       = cell(row, 15);
-        String caseSens     = cell(row, 16);
+        // ── TEAL: cols 14-18 ─────────────────────────────────────────────────
+        String ignoreFields = cell(row, 14);
+        String ignoreOrder  = cell(row, 15);
+        String cmpErrors    = cell(row, 16);
+        String numTol       = cell(row, 17);
+        String caseSens     = cell(row, 18);
 
         if (!ignoreFields.isEmpty() || !ignoreOrder.isEmpty() || !cmpErrors.isEmpty()
                 || !numTol.isEmpty() || !caseSens.isEmpty()) {
@@ -228,11 +232,11 @@ public class ExcelImportService {
             tc.setComparisonConfig(cmp);
         }
 
-        // ── PURPLE: cols 17-20 ────────────────────────────────────────────────
-        String expStatus  = cell(row, 17);
-        String expBody    = cell(row, 18);
-        String expHeaders = cell(row, 19);
-        String maxRt      = cell(row, 20);
+        // ── PURPLE: cols 19-22 ───────────────────────────────────────────────
+        String expStatus  = cell(row, 19);
+        String expBody    = cell(row, 20);
+        String expHeaders = cell(row, 21);
+        String maxRt      = cell(row, 22);
 
         if (!expStatus.isEmpty() || !expBody.isEmpty() || !expHeaders.isEmpty() || !maxRt.isEmpty()) {
             AutomationConfig auto = new AutomationConfig();
@@ -243,15 +247,15 @@ public class ExcelImportService {
             tc.setAutomationConfig(auto);
         }
 
-        // ── RED: cols 21-25 ───────────────────────────────────────────────────
-        String overallStatus = cell(row, 21);
+        // ── RED: cols 23-27 ──────────────────────────────────────────────────
+        String overallStatus = cell(row, 23);
         if (!overallStatus.isEmpty()) {
             TestResult result = new TestResult();
             result.setStatus(parseEnum(ExecutionStatus.class, overallStatus.toUpperCase(), ExecutionStatus.PENDING));
-            result.setModeRun(cell(row, 22));
-            result.setComparisonResult(cell(row, 23));
-            result.setAssertionResult(cell(row, 24));
-            result.setExecutedAt(cell(row, 25));
+            result.setModeRun(cell(row, 24));
+            result.setComparisonResult(cell(row, 25));
+            result.setAssertionResult(cell(row, 26));
+            result.setExecutedAt(cell(row, 27));
             tc.setResult(result);
         }
 

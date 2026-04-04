@@ -20,9 +20,13 @@ public class TestCase {
     @JacksonXmlProperty(isAttribute = true)
     private boolean enabled;
 
-    /** Whether to run comparison, automation, or both. Default = comparison. */
+    /** Whether to run comparison, automation, both, or none. Default = comparison. */
     @JacksonXmlProperty(isAttribute = true)
     private VerificationMode verificationMode = VerificationMode.COMPARISON;
+
+    /** Execution phase: setup (runs first, sequential), test (main, parallel-capable), teardown (runs last, sequential). */
+    @JacksonXmlProperty(isAttribute = true)
+    private Phase phase = Phase.TEST;
 
     @JacksonXmlProperty(isAttribute = true)
     private HttpMethod method;
@@ -44,6 +48,13 @@ public class TestCase {
     @JacksonXmlProperty(isAttribute = true)
     private String author;
 
+    /**
+     * Variable extraction DSL from response body.
+     * Format: "varName=$.jsonPath, varName2=$.other.path"
+     * Extracted values are stored in group-scope (or suite-scope for Global Setup groups).
+     */
+    private String extractVariables;
+
     private ComparisonConfig comparisonConfig;
     private AutomationConfig automationConfig;
     private TestResult result;
@@ -51,6 +62,7 @@ public class TestCase {
     public TestCase() {
         this.enabled = true;
         this.verificationMode = VerificationMode.COMPARISON;
+        this.phase = Phase.TEST;
         this.queryParams = new ArrayList<>();
         this.formParams = new ArrayList<>();
         this.result = new TestResult();
@@ -63,6 +75,7 @@ public class TestCase {
         this.description = description;
         this.enabled = enabled;
         this.verificationMode = VerificationMode.COMPARISON;
+        this.phase = Phase.TEST;
         this.method = method;
         this.endpoint = endpoint;
         this.author = author;
@@ -114,6 +127,9 @@ public class TestCase {
     public VerificationMode getVerificationMode() { return verificationMode; }
     public void setVerificationMode(VerificationMode verificationMode) { this.verificationMode = verificationMode != null ? verificationMode : VerificationMode.COMPARISON; }
 
+    public Phase getPhase() { return phase; }
+    public void setPhase(Phase phase) { this.phase = phase != null ? phase : Phase.TEST; }
+
     public HttpMethod getMethod() { return method; }
     public void setMethod(HttpMethod method) { this.method = method; }
 
@@ -134,6 +150,9 @@ public class TestCase {
 
     public String getAuthor() { return author; }
     public void setAuthor(String author) { this.author = author; }
+
+    public String getExtractVariables() { return extractVariables; }
+    public void setExtractVariables(String extractVariables) { this.extractVariables = extractVariables; }
 
     public ComparisonConfig getComparisonConfig() { return comparisonConfig; }
     public void setComparisonConfig(ComparisonConfig c) { this.comparisonConfig = c; }
