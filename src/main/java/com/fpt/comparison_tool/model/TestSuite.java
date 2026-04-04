@@ -11,6 +11,7 @@ import java.util.List;
 @JacksonXmlRootElement(localName = "testSuite")
 public class TestSuite {
 
+    private String id; // assigned by SuiteRegistry on import
     private SuiteSettings settings;
 
     @JacksonXmlElementWrapper(localName = "environments")
@@ -53,6 +54,8 @@ public class TestSuite {
                 .findFirst().orElse(null);
     }
 
+    public String getId()                             { return id; }
+    public void setId(String id)                      { this.id = id; }
     public SuiteSettings getSettings()               { return settings; }
     public void setSettings(SuiteSettings s)         { this.settings = s; }
 

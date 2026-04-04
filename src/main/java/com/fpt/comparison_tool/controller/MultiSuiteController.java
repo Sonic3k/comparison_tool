@@ -1,0 +1,89 @@
+package com.fpt.comparison_tool.controller;
+
+import com.fpt.comparison_tool.dto.ApiResponse;
+import com.fpt.comparison_tool.model.TestSuite;
+import com.fpt.comparison_tool.service.*;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Collection;
+import java.util.Map;
+
+/**
+ * Multi-suite CRUD.
+ * POST   /api/suites/import   — upload Excel or XML → register suite → return suiteId + suite
+ * GET    /api/suites           — list all loaded suites (metadata only)
+ * GET    /api/suites/{id}      — full suite data
+ * DELETE /api/suites/{id}      — unload suite
+ */
+@RestController
+@RequestMapping("/api/suites")
+public class MultiSuiteController {
+
+    private final SuiteRegistry    registry;
+    private final ExcelImportService excelImport;
+    private final XmlImportService   xmlImport;
+    private final AuthService        authService;
+
+    public MultiSuiteController(SuiteRegistry registry,
+                                 ExcelImportService excelImport,
+                                 XmlImportService xmlImport,
+                                 AuthService authService) {
+        this.registry    = registry;
+        this.excelImport = excelImport;
+        this.xmlImport   = xmlImport;
+        this.authService = authService;
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<ApiResponse<TestSuite>> importSuite(
+            @RequestParam("file") MultipartFile file) {
+        try {
+            String fn = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+            TestSuite suite;
+            if (fn.endsWith(".xlsx") || fn.endsWith(".xls")) {
+                suite = excelImport.importFrom(file.getInputStream());
+            } else if (fn.endsWith(".xml")) {
+                suite = xmlImport.importFrom(file.getInputStream());
+            } else {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Unsupported file type. Use .xlsx or .xml"));
+            }
+            String id = registry.register(suite);
+            authService.clearCache();
+            return ResponseEntity.ok(ApiResponse.ok("Suite imported: " + suite.getSettings().getSuiteName(), suite));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Import failed: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<Collection<TestSuite>>> listSuites() {
+        return ResponseEntity.ok(ApiResponse.ok(registry.getAll()));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<TestSuite>> getSuite(@PathVariable String id) {
+        return registry.get(id)
+                .map(s -> ResponseEntity.ok(ApiResponse.ok(s)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSuite(@PathVariable String id) {
+        if (!registry.exists(id)) return ResponseEntity.notFound().build();
+        registry.remove(id);
+        return ResponseEntity.ok(ApiResponse.ok("Suite removed", null));
+    }
+
+    // Patch suite settings
+    @PatchMapping("/{id}/settings")
+    public ResponseEntity<ApiResponse<TestSuite>> updateSettings(
+            @PathVariable String id, @RequestBody Map<String, Object> patch) {
+        return registry.get(id).map(suite -> {
+            // Delegate to existing suite mutators as needed
+            return ResponseEntity.ok(ApiResponse.ok(suite));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+}

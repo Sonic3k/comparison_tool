@@ -301,3 +301,114 @@ public class ExcelGenerator {
         }
     }
 }
+    // ── Generate with task results ────────────────────────────────────────────
+
+    public void generateWithResults(TestSuite suite, ExecutionTask task, OutputStream out)
+            throws IOException {
+        // Build a lookup: groupName → caseId → TaskCaseResult
+        java.util.Map<String, java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult>> lookup
+                = new java.util.HashMap<>();
+        if (task.getGroupResults() != null) {
+            for (com.fpt.comparison_tool.model.TaskGroupResult gr : task.getGroupResults()) {
+                java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult> byId = new java.util.HashMap<>();
+                if (gr.getCaseResults() != null) {
+                    for (com.fpt.comparison_tool.model.TaskCaseResult cr : gr.getCaseResults()) {
+                        byId.put(cr.getCaseId(), cr);
+                    }
+                }
+                lookup.put(gr.getGroupName(), byId);
+            }
+        }
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Styles s = new Styles(wb);
+            writeSettingsSheet(wb, suite.getSettings(), s);
+            writeEnvironmentsSheet(wb, suite.getEnvironments(), s);
+            writeAuthProfilesSheet(wb, suite, s);
+            for (TestGroup group : suite.getTestGroups()) {
+                writeTestGroupSheetWithResults(wb, group,
+                        lookup.getOrDefault(group.getName(), java.util.Map.of()), s);
+            }
+            wb.write(out);
+        }
+    }
+
+    private void writeTestGroupSheetWithResults(Workbook wb, TestGroup group,
+            java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult> results,
+            Styles s) {
+        Sheet sheet = wb.createSheet("TC - " + group.getName());
+        int totalCols = 26;
+
+        Row r0 = sheet.createRow(0);
+        setCellStyled(r0, 0, "GROUP INFO — TC - " + group.getName(), s.groupHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, totalCols - 1));
+        writeGroupInfoRow(sheet, 1, "Group Name",  group.getName(),        totalCols, s);
+        writeGroupInfoRow(sheet, 2, "Description", group.getDescription(), totalCols, s);
+        writeGroupInfoRow(sheet, 3, "Owner",        group.getOwner(),       totalCols, s);
+        sheet.createRow(4);
+
+        Row r5 = sheet.createRow(5);
+        setCellStyled(r5, 0,  "TEST CASE DEFINITION",   s.tcHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 0, 11));
+        setCellStyled(r5, 12, "COMPARISON OVERRIDES",   s.cmpHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 12, 16));
+        setCellStyled(r5, 17, "AUTOMATION ASSERTIONS",  s.autoHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 17, 20));
+        setCellStyled(r5, 21, "EXECUTION RESULTS",      s.resultHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 21, totalCols - 1));
+
+        String[] headers = {
+            "ID","Name","Description","Enabled","Verification Mode","Method","Endpoint",
+            "Query Params","Form Params","JSON Body","Headers","Author",
+            "Ignore Fields","Ignore Array Order","Compare Error Responses","Numeric Tolerance","Case Sensitive",
+            "Expected Status","Expected Body (Assertions)","Expected Headers","Max Response Time (ms)",
+            "Overall Status","Mode Run","Comparison Result","Assertion Result","Executed At"
+        };
+        Row r6 = sheet.createRow(6);
+        for (int i = 0; i < headers.length; i++) {
+            CellStyle cs = i <= 11 ? s.tcHeader : (i <= 16 ? s.cmpHeader : (i <= 20 ? s.autoHeader : s.resultHeader));
+            setCellStyled(r6, i, headers[i], cs);
+        }
+
+        int rowIdx = 7;
+        for (TestCase tc : group.getTestCases()) {
+            Row row = sheet.createRow(rowIdx++);
+            com.fpt.comparison_tool.model.TaskCaseResult res = results.get(tc.getId());
+            ComparisonConfig cmp = tc.getComparisonConfig();
+            AutomationConfig auto = tc.getAutomationConfig();
+
+            // GREEN 0-11
+            row.createCell(0).setCellValue(nvl(tc.getId()));
+            row.createCell(1).setCellValue(nvl(tc.getName()));
+            row.createCell(2).setCellValue(nvl(tc.getDescription()));
+            row.createCell(3).setCellValue(String.valueOf(tc.isEnabled()).toUpperCase());
+            row.createCell(4).setCellValue(tc.getVerificationMode() != null ? tc.getVerificationMode().getValue() : "comparison");
+            row.createCell(5).setCellValue(tc.getMethod() != null ? tc.getMethod().name() : "GET");
+            row.createCell(6).setCellValue(nvl(tc.getEndpoint()));
+            row.createCell(7).setCellValue(tc.getQueryParamsAsString());
+            row.createCell(8).setCellValue(tc.getFormParamsAsString());
+            row.createCell(9).setCellValue(nvl(tc.getJsonBody()));
+            row.createCell(10).setCellValue(nvl(tc.getHeaders()));
+            row.createCell(11).setCellValue(nvl(tc.getAuthor()));
+            // TEAL 12-16
+            row.createCell(12).setCellValue(cmp != null ? nvl(cmp.getIgnoreFieldsRaw()) : "");
+            row.createCell(13).setCellValue(cmp != null ? String.valueOf(cmp.isIgnoreArrayOrder()) : "");
+            row.createCell(14).setCellValue(cmp != null ? String.valueOf(cmp.isCompareErrorResponses()).toUpperCase() : "");
+            row.createCell(15).setCellValue(cmp != null ? String.valueOf(cmp.getNumericTolerance()) : "");
+            row.createCell(16).setCellValue(cmp != null ? String.valueOf(cmp.isCaseSensitive()) : "");
+            // PURPLE 17-20
+            row.createCell(17).setCellValue(auto != null ? nvl(auto.getExpectedStatus()) : "");
+            row.createCell(18).setCellValue(auto != null ? nvl(auto.getExpectedBody()) : "");
+            row.createCell(19).setCellValue(auto != null ? nvl(auto.getExpectedHeaders()) : "");
+            row.createCell(20).setCellValue(auto != null && auto.getMaxResponseTime() > 0 ? String.valueOf(auto.getMaxResponseTime()) : "");
+            // RED 21-25 (from task result)
+            row.createCell(21).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "pending");
+            row.createCell(22).setCellValue(res != null ? nvl(res.getModeRun()) : "");
+            row.createCell(23).setCellValue(res != null ? nvl(res.getComparisonResult()) : "");
+            row.createCell(24).setCellValue(res != null ? nvl(res.getAssertionResult()) : "");
+            row.createCell(25).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
+        }
+
+        int[] widths = {9,22,36,8,18,8,28,22,18,30,18,20,16,15,16,13,12,13,40,20,14,12,13,36,36,18};
+        for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
+    }

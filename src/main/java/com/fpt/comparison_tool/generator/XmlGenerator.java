@@ -30,3 +30,22 @@ public class XmlGenerator {
         xmlMapper.writerWithDefaultPrettyPrinter().writeValue(out, group);
     }
 }
+    /** Export suite + task results combined as XML. */
+    public void generateWithResults(com.fpt.comparison_tool.model.TestSuite suite,
+                                    com.fpt.comparison_tool.model.ExecutionTask task,
+                                    OutputStream out) throws Exception {
+        // Wrap results into a container object for XML serialization
+        TaskResultExport export = new TaskResultExport(suite, task);
+        xmlMapper.writerWithDefaultPrettyPrinter().writeValue(out, export);
+    }
+
+    /** Simple wrapper for XML export combining suite + task results */
+    public static class TaskResultExport {
+        public final com.fpt.comparison_tool.model.TestSuite suite;
+        public final com.fpt.comparison_tool.model.ExecutionTask task;
+        public TaskResultExport(com.fpt.comparison_tool.model.TestSuite s,
+                                com.fpt.comparison_tool.model.ExecutionTask t) {
+            this.suite = s; this.task = t;
+        }
+    }
+}
