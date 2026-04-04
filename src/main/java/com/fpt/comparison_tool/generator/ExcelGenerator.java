@@ -300,22 +300,17 @@ public class ExcelGenerator {
             return style;
         }
     }
-}
+
     // ── Generate with task results ────────────────────────────────────────────
 
     public void generateWithResults(TestSuite suite, ExecutionTask task, OutputStream out)
             throws IOException {
-        // Build a lookup: groupName → caseId → TaskCaseResult
-        java.util.Map<String, java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult>> lookup
-                = new java.util.HashMap<>();
+        java.util.Map<String, java.util.Map<String, TaskCaseResult>> lookup = new java.util.HashMap<>();
         if (task.getGroupResults() != null) {
-            for (com.fpt.comparison_tool.model.TaskGroupResult gr : task.getGroupResults()) {
-                java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult> byId = new java.util.HashMap<>();
-                if (gr.getCaseResults() != null) {
-                    for (com.fpt.comparison_tool.model.TaskCaseResult cr : gr.getCaseResults()) {
-                        byId.put(cr.getCaseId(), cr);
-                    }
-                }
+            for (TaskGroupResult gr : task.getGroupResults()) {
+                java.util.Map<String, TaskCaseResult> byId = new java.util.HashMap<>();
+                if (gr.getCaseResults() != null)
+                    for (TaskCaseResult cr : gr.getCaseResults()) byId.put(cr.getCaseId(), cr);
                 lookup.put(gr.getGroupName(), byId);
             }
         }
@@ -334,8 +329,7 @@ public class ExcelGenerator {
     }
 
     private void writeTestGroupSheetWithResults(Workbook wb, TestGroup group,
-            java.util.Map<String, com.fpt.comparison_tool.model.TaskCaseResult> results,
-            Styles s) {
+            java.util.Map<String, TaskCaseResult> results, Styles s) {
         Sheet sheet = wb.createSheet("TC - " + group.getName());
         int totalCols = 26;
 
@@ -348,13 +342,13 @@ public class ExcelGenerator {
         sheet.createRow(4);
 
         Row r5 = sheet.createRow(5);
-        setCellStyled(r5, 0,  "TEST CASE DEFINITION",   s.tcHeader);
+        setCellStyled(r5, 0,  "TEST CASE DEFINITION",  s.tcHeader);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 0, 11));
-        setCellStyled(r5, 12, "COMPARISON OVERRIDES",   s.cmpHeader);
+        setCellStyled(r5, 12, "COMPARISON OVERRIDES",  s.cmpHeader);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 12, 16));
-        setCellStyled(r5, 17, "AUTOMATION ASSERTIONS",  s.autoHeader);
+        setCellStyled(r5, 17, "AUTOMATION ASSERTIONS", s.autoHeader);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 17, 20));
-        setCellStyled(r5, 21, "EXECUTION RESULTS",      s.resultHeader);
+        setCellStyled(r5, 21, "EXECUTION RESULTS",     s.resultHeader);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 21, totalCols - 1));
 
         String[] headers = {
@@ -373,11 +367,9 @@ public class ExcelGenerator {
         int rowIdx = 7;
         for (TestCase tc : group.getTestCases()) {
             Row row = sheet.createRow(rowIdx++);
-            com.fpt.comparison_tool.model.TaskCaseResult res = results.get(tc.getId());
+            TaskCaseResult res = results.get(tc.getId());
             ComparisonConfig cmp = tc.getComparisonConfig();
             AutomationConfig auto = tc.getAutomationConfig();
-
-            // GREEN 0-11
             row.createCell(0).setCellValue(nvl(tc.getId()));
             row.createCell(1).setCellValue(nvl(tc.getName()));
             row.createCell(2).setCellValue(nvl(tc.getDescription()));
@@ -390,18 +382,15 @@ public class ExcelGenerator {
             row.createCell(9).setCellValue(nvl(tc.getJsonBody()));
             row.createCell(10).setCellValue(nvl(tc.getHeaders()));
             row.createCell(11).setCellValue(nvl(tc.getAuthor()));
-            // TEAL 12-16
             row.createCell(12).setCellValue(cmp != null ? nvl(cmp.getIgnoreFieldsRaw()) : "");
             row.createCell(13).setCellValue(cmp != null ? String.valueOf(cmp.isIgnoreArrayOrder()) : "");
             row.createCell(14).setCellValue(cmp != null ? String.valueOf(cmp.isCompareErrorResponses()).toUpperCase() : "");
             row.createCell(15).setCellValue(cmp != null ? String.valueOf(cmp.getNumericTolerance()) : "");
             row.createCell(16).setCellValue(cmp != null ? String.valueOf(cmp.isCaseSensitive()) : "");
-            // PURPLE 17-20
             row.createCell(17).setCellValue(auto != null ? nvl(auto.getExpectedStatus()) : "");
             row.createCell(18).setCellValue(auto != null ? nvl(auto.getExpectedBody()) : "");
             row.createCell(19).setCellValue(auto != null ? nvl(auto.getExpectedHeaders()) : "");
             row.createCell(20).setCellValue(auto != null && auto.getMaxResponseTime() > 0 ? String.valueOf(auto.getMaxResponseTime()) : "");
-            // RED 21-25 (from task result)
             row.createCell(21).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "pending");
             row.createCell(22).setCellValue(res != null ? nvl(res.getModeRun()) : "");
             row.createCell(23).setCellValue(res != null ? nvl(res.getComparisonResult()) : "");
@@ -412,3 +401,4 @@ public class ExcelGenerator {
         int[] widths = {9,22,36,8,18,8,28,22,18,30,18,20,16,15,16,13,12,13,40,20,14,12,13,36,36,18};
         for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
     }
+}

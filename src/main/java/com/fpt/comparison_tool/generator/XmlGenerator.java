@@ -29,17 +29,15 @@ public class XmlGenerator {
     public void generateGroup(TestGroup group, OutputStream out) throws Exception {
         xmlMapper.writerWithDefaultPrettyPrinter().writeValue(out, group);
     }
-}
+
     /** Export suite + task results combined as XML. */
     public void generateWithResults(com.fpt.comparison_tool.model.TestSuite suite,
                                     com.fpt.comparison_tool.model.ExecutionTask task,
                                     OutputStream out) throws Exception {
-        // Wrap results into a container object for XML serialization
-        TaskResultExport export = new TaskResultExport(suite, task);
-        xmlMapper.writerWithDefaultPrettyPrinter().writeValue(out, export);
+        xmlMapper.writerWithDefaultPrettyPrinter().writeValue(out, new TaskResultExport(suite, task));
     }
 
-    /** Simple wrapper for XML export combining suite + task results */
+    /** Wrapper combining suite definitions + task results for XML export. */
     public static class TaskResultExport {
         public final com.fpt.comparison_tool.model.TestSuite suite;
         public final com.fpt.comparison_tool.model.ExecutionTask task;
