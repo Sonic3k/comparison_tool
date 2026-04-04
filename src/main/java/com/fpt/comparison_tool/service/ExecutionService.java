@@ -158,13 +158,13 @@ public class ExecutionService {
                     ? "Source returned " + srcStatus + " — server error"
                     : "Target returned " + tgtStatus + " — server error";
             result.setStatus(ExecutionStatus.ERROR);
-            result.setDifferences(List.of(msg));
+            result.setDifferences(msg);
             return;
         }
 
         List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
         result.setStatus(diffs.isEmpty() ? ExecutionStatus.PASSED : ExecutionStatus.FAILED);
-        result.setDifferences(diffs);
+        result.setDifferences(String.join("\n", diffs));
     }
 
     // ── AUTOMATION ────────────────────────────────────────────────────────────
@@ -229,13 +229,13 @@ public class ExecutionService {
         // Comparison
         boolean compOk = true;
         if (!cmp.isCompareErrorResponses() && (srcStatus >= 500 || tgtStatus >= 500)) {
-            result.setDifferences(List.of(srcStatus >= 500
+            result.setDifferences(srcStatus >= 500
                     ? "Source " + srcStatus + " — server error"
-                    : "Target " + tgtStatus + " — server error"));
+                    : "Target " + tgtStatus + " — server error");
             compOk = false;
         } else {
             List<String> diffs = comparisonService.compare(srcBody, tgtBody, srcStatus, tgtStatus, cmp);
-            result.setDifferences(diffs);
+            result.setDifferences(String.join("\n", diffs));
             compOk = diffs.isEmpty();
         }
 
