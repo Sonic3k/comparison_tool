@@ -55,10 +55,7 @@ public class TaskController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<ExecutionTask>>> listAll() {
         List<ExecutionTask> tasks = taskQueue.getAllTasks();
-        // Return newest first
-        List<ExecutionTask> reversed = new java.util.ArrayList<>(tasks);
-        java.util.Collections.reverse(reversed);
-        return ResponseEntity.ok(ApiResponse.ok(reversed));
+        return ResponseEntity.ok(ApiResponse.ok(tasks.reversed()));
     }
 
     @GetMapping("/active")
