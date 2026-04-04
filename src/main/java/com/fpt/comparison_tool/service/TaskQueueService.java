@@ -93,9 +93,22 @@ public class TaskQueueService {
     }
 
     private void run(ExecutionTask task) {
+        log.info("Starting task {} for suite '{}'", task.getTaskId(), task.getSuiteName());
         suiteRegistry.get(task.getSuiteId()).ifPresentOrElse(
-            suite -> executionService.runTask(suite, task),
-            ()    -> task.abort("Suite no longer available")
+            suite -> {
+                try {
+                    executionService.runTask(suite, task);
+                    log.info("Task {} completed — passed={} failed={} error={}",
+                            task.getTaskId(), task.getPassed(), task.getFailed(), task.getErrorCount());
+                } catch (Exception e) {
+                    log.error("Task {} aborted with exception", task.getTaskId(), e);
+                    task.abort("Internal error: " + e.getMessage());
+                }
+            },
+            () -> {
+                log.warn("Task {} — suite {} no longer available", task.getTaskId(), task.getSuiteId());
+                task.abort("Suite no longer available");
+            }
         );
     }
 

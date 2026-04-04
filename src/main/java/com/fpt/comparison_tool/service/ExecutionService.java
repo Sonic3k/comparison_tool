@@ -41,7 +41,10 @@ public class ExecutionService {
 
     public void runTask(TestSuite suite, ExecutionTask task) {
         try {
-            ExecutionConfig ec = suite.getSettings().getExecutionConfig();
+            ExecutionConfig ec = suite.getSettings() != null
+                    ? suite.getSettings().getExecutionConfig() : null;
+            if (ec == null) ec = new ExecutionConfig();
+
             VerificationMode suiteFilter = ec.getVerificationMode();
 
             List<TestGroup> groups = filterGroups(suite, task.getGroupFilter());
