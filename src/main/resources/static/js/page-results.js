@@ -20,7 +20,7 @@ reg('results', {
 
     const groups = suite.testGroups || [];
     const allTcs = groups.flatMap(g => g.testCases || []);
-    const withRes = allTcs.filter(tc => tc.enabled && tc.result);
+    const withRes = allTcs.filter(tc => tc.result && tc.result.status && tc.result.status !== 'pending');
     const total   = allTcs.filter(tc => tc.enabled).length;
     const done    = withRes.length;
     const passed  = withRes.filter(tc => tc.result.status === 'passed').length;
@@ -149,7 +149,8 @@ function renderGroupAcc(g, idx) {
 function renderResRow(tc) {
   const res = tc.result;
   const vm  = tc.verificationMode || 'comparison';
-  if (!res) {
+  const hasResult = res && res.status && res.status !== 'pending';
+  if (!hasResult) {
     return `<tr>
       <td></td>
       <td><code style="font-size:11px">${esc(tc.id)}</code></td>

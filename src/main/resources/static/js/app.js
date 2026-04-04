@@ -154,16 +154,33 @@ function stopPolling() { clearInterval(_poll); _poll = null; }
 async function pollTasks() {
   const r = await api('GET', '/tasks');
   if (!r.success) return;
+
+  const prev = S.tasks;
   S.tasks = r.data || [];
+
+  // Detect tasks that just completed → refresh suite to pull updated tc.result
+  for (const t of S.tasks) {
+    if (t.status === 'completed' || t.status === 'failed') {
+      const was = prev.find(p => p.taskId === t.taskId);
+      if (was && was.status === 'in_progress') {
+        if (t.suiteId) await refreshSuite(t.suiteId);
+      }
+    }
+  }
+
   renderMonitor();
 
-  // Update badge
   const active = S.tasks.filter(t => ['pending','in_progress'].includes(t.status));
   const badge = document.getElementById('taskBadge');
   if (badge) { badge.textContent = active.length; badge.style.display = active.length ? '' : 'none'; }
 
-  // If on results page, refresh view
+  // Refresh current page if relevant
   if (S.page === 'results') pages.results?.refresh?.();
+  if (S.page === 'groups') {
+    const suite = activeSuite();
+    const el = document.getElementById('groupGrid');
+    if (suite && el) renderGroupGrid(suite);
+  }
 
   if (!active.length) stopPolling();
 }

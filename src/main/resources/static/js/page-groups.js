@@ -60,7 +60,7 @@ function renderGroupGrid(suite) {
   el.innerHTML = groups.map(g => {
     const tcs = g.testCases || [];
     const enabled = tcs.filter(t => t.enabled);
-    const withResult = enabled.filter(t => t.result);
+    const withResult = enabled.filter(t => t.result && t.result.status && t.result.status !== 'pending');
     const passed  = withResult.filter(t => t.result?.status === 'passed').length;
     const failed  = withResult.filter(t => t.result?.status === 'failed').length;
     const errors  = withResult.filter(t => t.result?.status === 'error').length;

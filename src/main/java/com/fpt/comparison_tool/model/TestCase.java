@@ -53,7 +53,7 @@ public class TestCase {
         this.verificationMode = VerificationMode.COMPARISON;
         this.queryParams = new ArrayList<>();
         this.formParams = new ArrayList<>();
-        this.result = new TestResult();
+        // result is null until execution — never initialize to empty TestResult
     }
 
     public TestCase(String id, String name, String description, boolean enabled,
@@ -68,7 +68,7 @@ public class TestCase {
         this.author = author;
         this.queryParams = new ArrayList<>();
         this.formParams = new ArrayList<>();
-        this.result = new TestResult();
+        // result is null until execution
     }
 
     // ── Fluent setters ─────────────────────────────────────────────────────────

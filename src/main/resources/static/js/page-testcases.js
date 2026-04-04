@@ -136,7 +136,7 @@ function renderTcBody(group) {
       <td>${methodBadge(tc.method||'GET')}</td>
       <td><code style="font-size:11px;color:var(--t2)">${esc(tc.endpoint)}</code></td>
       <td>${vmBadge(vm)}</td>
-      <td>${res ? statusBadge(res.status) : '<span style="font-size:11px;color:var(--t3)">—</span>'}</td>
+      <td>${res && res.status && res.status !== 'pending' ? statusBadge(res.status) : '<span style="font-size:11px;color:var(--t3)">—</span>'}</td>
       <td><div class="toggle ${tc.enabled?'on':''}" onclick="event.stopPropagation();toggleTc('${esc(tc.id)}')"></div></td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="btn btn-ghost btn-xs" onclick="showTcModal('${esc(tc.id)}')">Edit</button>
@@ -165,7 +165,7 @@ function renderTcDetail(tc) {
   if ((vm==='automation'||vm==='both') && auto.expectedBody)
     parts.push(`<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--auto);margin-bottom:3px">Assertions</div><pre class="assert-out">${esc(auto.expectedBody)}</pre></div>`);
 
-  if (res) {
+  if (res && res.status && res.status !== 'pending') {
     parts.push(`<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">`);
     if (res.comparisonResult || res.differences?.length) {
       const diffs = res.differences?.length ? res.differences : (res.comparisonResult||'').split('\n').filter(Boolean);
