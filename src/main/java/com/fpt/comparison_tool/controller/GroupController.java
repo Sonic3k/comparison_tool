@@ -3,6 +3,7 @@ package com.fpt.comparison_tool.controller;
 import com.fpt.comparison_tool.dto.ApiResponse;
 import com.fpt.comparison_tool.generator.XmlGenerator;
 import com.fpt.comparison_tool.model.TestGroup;
+import com.fpt.comparison_tool.service.JsonImportService;
 import com.fpt.comparison_tool.service.SessionService;
 import com.fpt.comparison_tool.service.XmlImportService;
 import org.springframework.http.*;
@@ -16,9 +17,10 @@ import java.util.List;
 @RequestMapping("/api/groups")
 public class GroupController {
 
-    private final SessionService   session;
-    private final XmlImportService xmlImport   = new XmlImportService();
-    private final XmlGenerator     xmlGenerator = new XmlGenerator();
+    private final SessionService    session;
+    private final XmlImportService  xmlImport    = new XmlImportService();
+    private final JsonImportService jsonImport   = new JsonImportService();
+    private final XmlGenerator      xmlGenerator = new XmlGenerator();
 
     public GroupController(SessionService session) {
         this.session = session;
@@ -100,24 +102,27 @@ public class GroupController {
             if (imported.getName() == null || imported.getName().isBlank()) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("Group name is missing in XML"));
             }
-
-            TestGroup existing = findGroup(imported.getName());
-            if (existing != null) {
-                if ("replace".equalsIgnoreCase(mode)) {
-                    List<TestGroup> groups = session.getTestSuite().getTestGroups();
-                    groups.set(groups.indexOf(existing), imported);
-                    return ResponseEntity.ok(ApiResponse.ok("Group replaced: " + imported.getName(), imported));
-                } else {
-                    return ResponseEntity.badRequest()
-                            .body(ApiResponse.error("Group '" + imported.getName() + "' already exists. Use mode=replace to overwrite."));
-                }
-            }
-
-            session.getTestSuite().addTestGroup(imported);
-            return ResponseEntity.ok(ApiResponse.ok("Group imported: " + imported.getName(), imported));
-
+            return applyImport(imported, mode);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Failed to parse XML: " + e.getMessage()));
+        }
+    }
+
+    // ─── Import single group from JSON ────────────────────────────────────────
+
+    @PostMapping("/import/json")
+    public ResponseEntity<ApiResponse<TestGroup>> importGroupJson(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "mode", defaultValue = "new") String mode) {
+        requireSuite();
+        try {
+            TestGroup imported = jsonImport.importGroup(file.getInputStream());
+            if (imported.getName() == null || imported.getName().isBlank()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Group name is missing in JSON"));
+            }
+            return applyImport(imported, mode);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Failed to parse JSON: " + e.getMessage()));
         }
     }
 
@@ -136,6 +141,22 @@ public class GroupController {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private ResponseEntity<ApiResponse<TestGroup>> applyImport(TestGroup imported, String mode) {
+        TestGroup existing = findGroup(imported.getName());
+        if (existing != null) {
+            if ("replace".equalsIgnoreCase(mode)) {
+                List<TestGroup> groups = session.getTestSuite().getTestGroups();
+                groups.set(groups.indexOf(existing), imported);
+                return ResponseEntity.ok(ApiResponse.ok("Group replaced: " + imported.getName(), imported));
+            } else {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Group '" + imported.getName() + "' already exists. Use mode=replace to overwrite."));
+            }
+        }
+        session.getTestSuite().addTestGroup(imported);
+        return ResponseEntity.ok(ApiResponse.ok("Group imported: " + imported.getName(), imported));
+    }
 
     private TestGroup findGroup(String name) {
         return session.getTestSuite().getTestGroups().stream()

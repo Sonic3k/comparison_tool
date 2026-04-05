@@ -567,25 +567,28 @@ function openImportGroupModal() {
   // Reset to manual tab each time
   switchImportTab('manual');
   ['ng-name','ng-desc','ng-owner'].forEach(id => sv(id, ''));
-  document.getElementById('ig-file').value = '';
-  sv('ig-mode', 'new');
+  document.getElementById('ig-file').value      = '';
+  document.getElementById('ig-file-json').value = '';
+  sv('ig-mode',      'new');
+  sv('ig-mode-json', 'new');
   openModal('importGroupModal');
 }
 
-// ─── Group XML Import ─────────────────────────────────────────────────────────
-async function importGroupXml() {
-  const fileInput = document.getElementById('ig-file');
-  const file = fileInput.files[0];
-  if (!file) { alert('Please choose an XML file'); return; }
-  const mode = g('ig-mode');
+// ─── Group File Import (XML + JSON) ──────────────────────────────────────────
+async function importGroupFile(format) {
+  const fileInputId = format === 'json' ? 'ig-file-json' : 'ig-file';
+  const modeId      = format === 'json' ? 'ig-mode-json' : 'ig-mode';
+  const file = document.getElementById(fileInputId).files[0];
+  if (!file) { toast(`Please choose a ${format.toUpperCase()} file`); return; }
 
   const fd = new FormData();
   fd.append('file', file);
 
-  const res = await (await fetch(`/api/groups/import/xml?mode=${mode}`, { method: 'POST', body: fd })).json();
-  if (!res.success) { toast(res.message, true); return; }
+  const mode = document.getElementById(modeId).value;
+  const res  = await (await fetch(`/api/groups/import/${format}?mode=${mode}`, { method: 'POST', body: fd })).json();
+  if (!res.success) { toast(res.message); return; }
 
-  const imported = res.data;
+  const imported    = res.data;
   const existingIdx = suite.testGroups.findIndex(g => g.name === imported.name);
   if (existingIdx >= 0) suite.testGroups[existingIdx] = imported;
   else suite.testGroups.push(imported);
@@ -595,3 +598,6 @@ async function importGroupXml() {
   toast(res.message);
   openGroupDetail(imported.name);
 }
+
+// Backward-compat alias
+function importGroupXml() { importGroupFile('xml'); }
