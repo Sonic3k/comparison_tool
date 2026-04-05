@@ -125,8 +125,8 @@ async function handleOverlayDrop(e) {
 
   if (!file) { toast('No file detected', true); return; }
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['xlsx', 'xls', 'xml'].includes(ext)) {
-    toast('Please drop an Excel (.xlsx) or XML file', true);
+  if (!['xlsx', 'xls', 'xml', 'json'].includes(ext)) {
+    toast('Please drop an Excel (.xlsx), XML or JSON file', true);
     return;
   }
   await importSuiteFile(file);
