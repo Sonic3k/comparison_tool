@@ -87,6 +87,7 @@ header h1 { font-size: 15px; font-weight: 600; flex: 1; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 label { font-size: 12px; font-weight: 500; color: #4b5563; }
 input, select, textarea { padding: 7px 10px; border: 1px solid var(--gray-border); border-radius: 6px; font-size: 13px; font-family: inherit; background: #fff; width: 100%; transition: border-color .15s; }
+input[type=radio], input[type=checkbox] { width: auto; padding: 0; border: none; background: none; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29,78,216,.08); }
 textarea { resize: vertical; min-height: 80px; }
 .form-hint { font-size: 11px; color: #9ca3af; }
@@ -212,9 +213,8 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .sum-pend  { background:#f3f4f6; } .sum-pend .sum-n  { color:#9ca3af; }
 
 /* ─── Postman export modal ───────────────────────────────────── */
-.pm-option { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1.5px solid var(--gray-border); border-radius:8px; cursor:pointer; transition:border-color .15s, background .15s; }
-.pm-option:has(input:checked) { border-color:var(--blue); background:#eff6ff; }
+.pm-option { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border:1.5px solid var(--gray-border); border-radius:8px; cursor:pointer; transition:border-color .15s, background .15s; }
 .pm-option input[type=radio] { margin-top:2px; accent-color:var(--blue); flex-shrink:0; }
-.pm-option-body { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.pm-option-label { font-weight:600; font-size:13px; color:var(--gray); }
-.pm-option-url { font-size:11px; color:var(--text-muted); word-break:break-all; }
+.pm-option-body { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.pm-option-label { font-weight:600; font-size:13px; color:#111827; }
+.pm-option-url { font-size:11px; color:#6b7280; word-break:break-all; }
