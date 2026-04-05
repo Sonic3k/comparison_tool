@@ -13,16 +13,19 @@ import java.util.List;
 @RequestMapping("/api/suite")
 public class SuiteController {
 
-    private final SessionService session;
+    private final SessionService    session;
     private final ExcelImportService excelImport;
-    private final XmlImportService xmlImport;
-    private final AuthService authService;
+    private final XmlImportService   xmlImport;
+    private final JsonImportService  jsonImport;
+    private final AuthService        authService;
 
     public SuiteController(SessionService session, ExcelImportService excelImport,
-                           XmlImportService xmlImport, AuthService authService) {
+                           XmlImportService xmlImport, JsonImportService jsonImport,
+                           AuthService authService) {
         this.session     = session;
         this.excelImport = excelImport;
         this.xmlImport   = xmlImport;
+        this.jsonImport  = jsonImport;
         this.authService = authService;
     }
 
@@ -42,9 +45,11 @@ public class SuiteController {
                 suite = excelImport.importFrom(file.getInputStream());
             } else if (filename.endsWith(".xml")) {
                 suite = xmlImport.importFrom(file.getInputStream());
+            } else if (filename.endsWith(".json")) {
+                suite = jsonImport.importFrom(file.getInputStream());
             } else {
                 return ResponseEntity.badRequest()
-                        .body(ApiResponse.error("Unsupported file type. Use .xlsx or .xml"));
+                        .body(ApiResponse.error("Unsupported file type. Use .xlsx, .xml or .json"));
             }
             session.loadSuite(suite);
             authService.clearCache();

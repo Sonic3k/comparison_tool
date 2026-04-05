@@ -7,6 +7,7 @@ import com.fpt.comparison_tool.generator.PostmanExporter;
 import com.fpt.comparison_tool.generator.PostmanExporter.PostmanExport;
 import com.fpt.comparison_tool.generator.SampleDataBuilder;
 import com.fpt.comparison_tool.generator.XmlGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fpt.comparison_tool.model.TestSuite;
 import com.fpt.comparison_tool.service.SessionService;
 import org.springframework.http.*;
@@ -25,8 +26,17 @@ public class ExportController {
     private final XmlGenerator    xmlGenerator    = new XmlGenerator();
     private final PostmanExporter postmanExporter = new PostmanExporter();
     private final JmeterExporter  jmeterExporter  = new JmeterExporter();
+    private final ObjectMapper    objectMapper    = new ObjectMapper();
 
     public ExportController(SessionService session) { this.session = session; }
+
+    @GetMapping("/json")
+    public ResponseEntity<byte[]> exportJson() throws Exception {
+        requireSuite();
+        byte[] data = objectMapper.writerWithDefaultPrettyPrinter()
+                                  .writeValueAsBytes(session.getTestSuite());
+        return file(data, safeName(session.getTestSuite()) + ".json", "application/json");
+    }
 
     @GetMapping("/excel")
     public ResponseEntity<byte[]> exportExcel() throws Exception {
