@@ -5,6 +5,7 @@ import com.fpt.comparison_tool.generator.PostmanExporter;
 import com.fpt.comparison_tool.generator.PostmanExporter.PostmanExport;
 import com.fpt.comparison_tool.generator.SampleDataBuilder;
 import com.fpt.comparison_tool.generator.XmlGenerator;
+import com.fpt.comparison_tool.model.TestSuite;
 import com.fpt.comparison_tool.service.SessionService;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -104,7 +105,7 @@ public class ExportController {
         zip.closeEntry();
     }
 
-    private String safeName(com.fpt.comparison_tool.model.TestSuite suite) {
+    private String safeName(TestSuite suite) {
         String n = suite.getSettings() != null ? suite.getSettings().getSuiteName() : null;
         return (n != null && !n.isBlank() ? n : "Suite").replaceAll("[^a-zA-Z0-9_-]", "_");
     }
