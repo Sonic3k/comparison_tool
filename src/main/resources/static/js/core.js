@@ -220,17 +220,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Postman Export Modal ──────────────────────────────────────────────────────
 
 function openPostmanModal() {
-  // Populate URLs from suite environments
   const ec   = suite?.settings?.executionConfig || {};
   const envs = suite?.environments || [];
 
   const sourceEnv = envs.find(e => e.name === ec.sourceEnvironment);
   const targetEnv = envs.find(e => e.name === ec.targetEnvironment);
 
-  document.getElementById('pmSourceUrl').textContent = sourceEnv?.url || '(no source environment configured)';
-  document.getElementById('pmTargetUrl').textContent = targetEnv?.url || '(no target environment configured)';
+  document.getElementById('pmSourceUrl').textContent =
+      sourceEnv?.url || '(no source environment configured)';
+  document.getElementById('pmTargetUrl').textContent =
+      targetEnv?.url || '(no target environment configured)';
 
-  // Reset to default selection
   document.querySelector('input[name="pmMode"][value="target"]').checked = true;
 
   openModal('postmanModal');
@@ -238,8 +238,34 @@ function openPostmanModal() {
 
 function onPmModeChange() { /* reserved for future UX tweaks */ }
 
-function downloadPostman() {
+async function downloadPostman() {
   const mode = document.querySelector('input[name="pmMode"]:checked')?.value || 'target';
   closeModal('postmanModal');
-  window.location.href = `/api/export/postman?mode=${mode}`;
+
+  try {
+    const res = await fetch(`/api/export/postman?mode=${mode}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: 'Export failed' }));
+      toast(body.message || 'Export failed');
+      return;
+    }
+
+    const blob = await res.blob();
+
+    // Extract filename from Content-Disposition header
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";\n]+)"?/);
+    const filename = match ? match[1] : (mode === 'both' ? 'postman_export.zip' : 'postman_collection.json');
+
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Export error: ' + e.message);
+  }
 }
