@@ -17,7 +17,8 @@
     <div class="export-menu" id="exportMenu">
       <a href="/api/export/excel">📊 Download Excel (.xlsx)</a>
       <a href="/api/export/xml">📄 Download XML</a>
-      <a href="#" onclick="openPostmanModal(); return false;">📬 Export to Postman…</a>
+      <a href="#" onclick="openExportModal('postman'); return false;">📬 Export to Postman…</a>
+      <a href="#" onclick="openExportModal('jmeter');  return false;">⚡ Export to JMeter…</a>
       <div class="divider"></div>
       <a href="/api/export/template/excel">📋 Excel Template</a>
       <a href="/api/export/template/xml">🗂 XML Template</a>
@@ -282,42 +283,40 @@
 
 <!-- ─── Modals ────────────────────────────────────────────────────────────── -->
 
-<!-- Postman Export Modal -->
-<div class="overlay" id="postmanModal">
+<!-- Export Modal (shared by Postman + JMeter) -->
+<div class="overlay" id="exportModal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">📬 Export to Postman</span>
-      <button class="modal-close" onclick="closeModal('postmanModal')">×</button>
+      <span class="modal-title" id="exportModalTitle">Export</span>
+      <button class="modal-close" onclick="closeModal('exportModal')">×</button>
     </div>
-    <p style="font-size:13px;color:#6b7280;margin-bottom:16px">
-      Select which environment(s) to export. Each option generates a ready-to-import Postman collection.
-    </p>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px" id="exportModalDesc"></p>
     <div style="display:flex;flex-direction:column;gap:10px">
       <label class="pm-option" id="pmOptSource">
-        <input type="radio" name="pmMode" value="source" onchange="onPmModeChange()"/>
+        <input type="radio" name="pmMode" value="source" onchange="onExportModeChange()"/>
         <div class="pm-option-body">
           <span class="pm-option-label">Source only</span>
           <span class="pm-option-url" id="pmSourceUrl">—</span>
         </div>
       </label>
       <label class="pm-option" id="pmOptTarget">
-        <input type="radio" name="pmMode" value="target" onchange="onPmModeChange()" checked/>
+        <input type="radio" name="pmMode" value="target" onchange="onExportModeChange()" checked/>
         <div class="pm-option-body">
           <span class="pm-option-label">Target only <span style="font-weight:400;font-size:11px;color:#3b82f6">(default)</span></span>
           <span class="pm-option-url" id="pmTargetUrl">—</span>
         </div>
       </label>
       <label class="pm-option" id="pmOptBoth">
-        <input type="radio" name="pmMode" value="both" onchange="onPmModeChange()"/>
+        <input type="radio" name="pmMode" value="both" onchange="onExportModeChange()"/>
         <div class="pm-option-body">
           <span class="pm-option-label">Both (Source + Target)</span>
-          <span class="pm-option-url" style="font-style:italic">Exports collection + 2 environment files as .zip</span>
+          <span class="pm-option-url" id="exportBothDesc" style="font-style:italic"></span>
         </div>
       </label>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('postmanModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="downloadPostman()">Download</button>
+      <button class="btn btn-outline" onclick="closeModal('exportModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="downloadExport()">Download</button>
     </div>
   </div>
 </div>
