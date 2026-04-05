@@ -284,37 +284,44 @@
 
 <!-- Postman Export Modal -->
 <div class="overlay" id="postmanModal">
-  <div class="modal" style="max-width:460px">
+  <div class="modal modal-wide" style="width:520px;max-width:95vw">
     <div class="modal-header">
       <span class="modal-title">📬 Export to Postman</span>
       <button class="modal-close" onclick="closeModal('postmanModal')">×</button>
     </div>
-    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px">
-      <p style="margin:0;font-size:13px;color:var(--text-muted)">
-        Select which environment(s) to export. Each option generates a ready-to-import Postman collection.
-      </p>
-      <label class="pm-option" id="pmOptSource">
-        <input type="radio" name="pmMode" value="source" onchange="onPmModeChange()"/>
-        <div class="pm-option-body">
-          <span class="pm-option-label">Source only</span>
-          <span class="pm-option-url" id="pmSourceUrl">—</span>
+
+    <p style="margin:0 0 16px;font-size:13px;color:#6b7280">
+      Select which environment(s) to export. Each option generates a ready-to-import Postman collection.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer" id="pmOptSource">
+        <input type="radio" name="pmMode" value="source" style="margin-top:3px;flex-shrink:0" onchange="onPmModeChange()"/>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+          <span style="font-weight:600;font-size:13px;color:#1e293b">Source only</span>
+          <span id="pmSourceUrl" style="font-size:11px;color:#6b7280;word-break:break-all">—</span>
         </div>
       </label>
-      <label class="pm-option" id="pmOptTarget">
-        <input type="radio" name="pmMode" value="target" onchange="onPmModeChange()" checked/>
-        <div class="pm-option-body">
-          <span class="pm-option-label">Target only</span>
-          <span class="pm-option-url" id="pmTargetUrl">—</span>
+
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer" id="pmOptTarget">
+        <input type="radio" name="pmMode" value="target" style="margin-top:3px;flex-shrink:0" onchange="onPmModeChange()" checked/>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+          <span style="font-weight:600;font-size:13px;color:#1e293b">Target only <span style="font-weight:400;font-size:11px;color:#3b82f6">(default)</span></span>
+          <span id="pmTargetUrl" style="font-size:11px;color:#6b7280;word-break:break-all">—</span>
         </div>
       </label>
-      <label class="pm-option" id="pmOptBoth">
-        <input type="radio" name="pmMode" value="both" onchange="onPmModeChange()"/>
-        <div class="pm-option-body">
-          <span class="pm-option-label">Both (Source + Target)</span>
-          <span class="pm-option-url" style="font-style:italic">Exports collection + 2 environment files as .zip</span>
+
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer" id="pmOptBoth">
+        <input type="radio" name="pmMode" value="both" style="margin-top:3px;flex-shrink:0" onchange="onPmModeChange()"/>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+          <span style="font-weight:600;font-size:13px;color:#1e293b">Both (Source + Target)</span>
+          <span style="font-size:11px;color:#6b7280;font-style:italic">Exports collection + 2 environment files as .zip</span>
         </div>
       </label>
+
     </div>
+
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('postmanModal')">Cancel</button>
       <button class="btn btn-primary" onclick="downloadPostman()">Download</button>

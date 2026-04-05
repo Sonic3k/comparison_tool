@@ -232,11 +232,18 @@ function openPostmanModal() {
       targetEnv?.url || '(no target environment configured)';
 
   document.querySelector('input[name="pmMode"][value="target"]').checked = true;
-
+  onPmModeChange();
   openModal('postmanModal');
 }
 
-function onPmModeChange() { /* reserved for future UX tweaks */ }
+function onPmModeChange() {
+  ['pmOptSource','pmOptTarget','pmOptBoth'].forEach(id => {
+    const el = document.getElementById(id);
+    const checked = el.querySelector('input').checked;
+    el.style.borderColor = checked ? '#3b82f6' : '#e5e7eb';
+    el.style.background   = checked ? '#eff6ff' : '';
+  });
+}
 
 async function downloadPostman() {
   const mode = document.querySelector('input[name="pmMode"]:checked')?.value || 'target';
