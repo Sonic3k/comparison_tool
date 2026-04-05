@@ -216,3 +216,30 @@ document.addEventListener('DOMContentLoaded', () => {
     showSuiteView();
   }
 })();
+
+// ─── Postman Export Modal ──────────────────────────────────────────────────────
+
+function openPostmanModal() {
+  // Populate URLs from suite environments
+  const ec   = suite?.settings?.executionConfig || {};
+  const envs = suite?.environments || [];
+
+  const sourceEnv = envs.find(e => e.name === ec.sourceEnvironment);
+  const targetEnv = envs.find(e => e.name === ec.targetEnvironment);
+
+  document.getElementById('pmSourceUrl').textContent = sourceEnv?.url || '(no source environment configured)';
+  document.getElementById('pmTargetUrl').textContent = targetEnv?.url || '(no target environment configured)';
+
+  // Reset to default selection
+  document.querySelector('input[name="pmMode"][value="target"]').checked = true;
+
+  openModal('postmanModal');
+}
+
+function onPmModeChange() { /* reserved for future UX tweaks */ }
+
+function downloadPostman() {
+  const mode = document.querySelector('input[name="pmMode"]:checked')?.value || 'target';
+  closeModal('postmanModal');
+  window.location.href = `/api/export/postman?mode=${mode}`;
+}

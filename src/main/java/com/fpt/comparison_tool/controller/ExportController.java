@@ -44,11 +44,23 @@ public class ExportController {
     }
 
     @GetMapping("/postman")
-    public ResponseEntity<byte[]> exportPostman() throws Exception {
+    public ResponseEntity<byte[]> exportPostman(
+            @RequestParam(defaultValue = "target") String mode) throws Exception {
         requireSuite();
-        PostmanExport export = postmanExporter.export(session.getTestSuite());
-        String name = safeName(session.getTestSuite());
-        return file(buildZip(name, export), name + "_postman.zip", "application/zip");
+        TestSuite suite = session.getTestSuite();
+        String name = safeName(suite);
+
+        return switch (mode.toLowerCase()) {
+            case "source" -> file(postmanExporter.exportSingle(suite, true),
+                    name + "_source_collection.json", "application/json");
+            case "target" -> file(postmanExporter.exportSingle(suite, false),
+                    name + "_target_collection.json", "application/json");
+            case "both"   -> {
+                PostmanExport export = postmanExporter.exportBoth(suite);
+                yield file(buildZip(name, export), name + "_postman.zip", "application/zip");
+            }
+            default -> throw new IllegalArgumentException("Invalid mode: " + mode);
+        };
     }
 
     @GetMapping("/template/excel")

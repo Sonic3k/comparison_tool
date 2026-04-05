@@ -17,7 +17,7 @@
     <div class="export-menu" id="exportMenu">
       <a href="/api/export/excel">📊 Download Excel (.xlsx)</a>
       <a href="/api/export/xml">📄 Download XML</a>
-      <a href="/api/export/postman">📬 Download Postman (.zip)</a>
+      <a href="#" onclick="openPostmanModal(); return false;">📬 Export to Postman…</a>
       <div class="divider"></div>
       <a href="/api/export/template/excel">📋 Excel Template</a>
       <a href="/api/export/template/xml">🗂 XML Template</a>
@@ -281,6 +281,46 @@
 </div><!-- /suite -->
 
 <!-- ─── Modals ────────────────────────────────────────────────────────────── -->
+
+<!-- Postman Export Modal -->
+<div class="overlay" id="postmanModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">📬 Export to Postman</span>
+      <button class="modal-close" onclick="closeModal('postmanModal')">×</button>
+    </div>
+    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px">
+      <p style="margin:0;font-size:13px;color:var(--text-muted)">
+        Select which environment(s) to export. Each option generates a ready-to-import Postman collection.
+      </p>
+      <label class="pm-option" id="pmOptSource">
+        <input type="radio" name="pmMode" value="source" onchange="onPmModeChange()"/>
+        <div class="pm-option-body">
+          <span class="pm-option-label">Source only</span>
+          <span class="pm-option-url" id="pmSourceUrl">—</span>
+        </div>
+      </label>
+      <label class="pm-option" id="pmOptTarget">
+        <input type="radio" name="pmMode" value="target" onchange="onPmModeChange()" checked/>
+        <div class="pm-option-body">
+          <span class="pm-option-label">Target only</span>
+          <span class="pm-option-url" id="pmTargetUrl">—</span>
+        </div>
+      </label>
+      <label class="pm-option" id="pmOptBoth">
+        <input type="radio" name="pmMode" value="both" onchange="onPmModeChange()"/>
+        <div class="pm-option-body">
+          <span class="pm-option-label">Both (Source + Target)</span>
+          <span class="pm-option-url" style="font-style:italic">Exports collection + 2 environment files as .zip</span>
+        </div>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('postmanModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="downloadPostman()">Download</button>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="createModal">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">New Test Suite</span><button class="modal-close" onclick="closeModal('createModal')">×</button></div>

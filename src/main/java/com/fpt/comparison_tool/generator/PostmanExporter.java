@@ -9,22 +9,32 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Converts a TestSuite into Postman Collection v2.1 format — 3 files returned as a record:
+ * Converts a TestSuite into Postman Collection v2.1 format.
  *
- *   collectionJson  — all test groups as folders; within each group, TCs are organized
- *                     by Phase (Setup → Test Cases → Teardown sub-folders when mixed,
- *                     or flat when all TCs are the default TEST phase)
- *   sourceEnvJson   — baseUrl + auth variables for the source environment
- *   targetEnvJson   — baseUrl + auth variables for the target environment
+ * Two export modes:
  *
- * Auth strategy (collection-level, driven by source env's auth profile):
+ *   exportSingle(suite, isSource)
+ *     → single collection.json with baseUrl and auth values hardcoded in
+ *       collection variables — no environment file needed.
+ *
+ *   exportBoth(suite)
+ *     → PostmanExport(collection.json, source-env.json, target-env.json)
+ *       collection uses {{baseUrl}} / {{authToken}} placeholders;
+ *       values are injected via the two environment files.
+ *
+ * Auth (collection-level, driven by the exported environment's auth profile):
  *   NONE               → noauth
  *   BEARER             → bearer with {{authToken}}
  *   BASIC              → basic with {{authUsername}} / {{authPassword}}
- *   CLIENT_CREDENTIALS → bearer with {{authToken}}, pre-request script fetches token automatically
+ *   CLIENT_CREDENTIALS → bearer with {{authToken}};
+ *                        pre-request script fetches token automatically
+ *                        (reads vars via pm.variables.get — works for both modes)
  *
- * Note: extractVariables DSL is not exported (Postman has no equivalent concept).
- *       VerificationMode.NONE TCs are exported as normal requests without any assertion.
+ * Phase-aware folder structure:
+ *   Groups with mixed phases → sub-folders Setup / Test Cases / Teardown
+ *   Groups with only TEST phase → flat list (no nesting)
+ *
+ * Note: extractVariables DSL is not exported (no Postman equivalent).
  */
 public class PostmanExporter {
 
@@ -35,9 +45,28 @@ public class PostmanExporter {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    // ─── Entry point ──────────────────────────────────────────────────────────
+    // ─── Public entry points ──────────────────────────────────────────────────
 
-    public PostmanExport export(TestSuite suite) throws Exception {
+    /**
+     * Single-env export: collection variables hold the actual URL and auth values.
+     * No environment file required — importable as a standalone collection.
+     */
+    public byte[] exportSingle(TestSuite suite, boolean isSource) throws Exception {
+        List<Environment> envs     = nullSafe(suite.getEnvironments());
+        List<AuthProfile> profiles = nullSafe(suite.getAuthProfiles());
+
+        Environment env  = resolveEnv(envs, suite.getSettings(), isSource);
+        AuthProfile auth = resolveAuth(profiles, env);
+
+        return buildCollection(suite, dominantAuthType(auth), isOauth2(auth),
+                               buildSingleModeVariables(env, auth));
+    }
+
+    /**
+     * Dual-env export: collection uses {{baseUrl}} / auth placeholders.
+     * Returns collection + two environment files (source and target).
+     */
+    public PostmanExport exportBoth(TestSuite suite) throws Exception {
         List<Environment> envs     = nullSafe(suite.getEnvironments());
         List<AuthProfile> profiles = nullSafe(suite.getAuthProfiles());
 
@@ -46,25 +75,26 @@ public class PostmanExporter {
         AuthProfile sourceAuth = resolveAuth(profiles, sourceEnv);
         AuthProfile targetAuth = resolveAuth(profiles, targetEnv);
 
-        boolean    needsOauth2      = isOauth2(sourceAuth) || isOauth2(targetAuth);
-        AuthType   collectionAuth   = dominantAuthType(sourceAuth);
+        boolean needsOauth2 = isOauth2(sourceAuth) || isOauth2(targetAuth);
 
-        byte[] collection = buildCollection(suite, collectionAuth, needsOauth2);
-        byte[] sourceFile = buildEnvironment("Source", sourceEnv, sourceAuth);
-        byte[] targetFile = buildEnvironment("Target", targetEnv, targetAuth);
+        byte[] collection = buildCollection(suite, dominantAuthType(sourceAuth), needsOauth2,
+                                            buildBothModeBaseVariable());
+        byte[] sourceFile = buildEnvironmentFile("Source", sourceEnv, sourceAuth);
+        byte[] targetFile = buildEnvironmentFile("Target", targetEnv, targetAuth);
 
         return new PostmanExport(collection, sourceFile, targetFile);
     }
 
     // ─── Collection ───────────────────────────────────────────────────────────
 
-    private byte[] buildCollection(TestSuite suite, AuthType authType, boolean needsOauth2)
+    private byte[] buildCollection(TestSuite suite, AuthType authType,
+                                   boolean needsOauth2, ArrayNode collectionVariables)
             throws Exception {
         ObjectNode root = mapper.createObjectNode();
         root.set("info",     buildInfo(suite));
         root.set("auth",     buildAuth(authType));
         if (needsOauth2) root.set("event", buildOauth2PreRequestEvent());
-        root.set("variable", buildCollectionVariables());
+        root.set("variable", collectionVariables);
         root.set("item",     buildFolders(nullSafe(suite.getTestGroups())));
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
     }
@@ -75,6 +105,44 @@ public class PostmanExporter {
         info.put("name",   name != null && !name.isBlank() ? name : "API Comparison Suite");
         info.put("schema", SCHEMA);
         return info;
+    }
+
+    // ─── Collection variables ─────────────────────────────────────────────────
+
+    /** Single mode: baseUrl + auth values hardcoded so the collection is self-contained. */
+    private ArrayNode buildSingleModeVariables(Environment env, AuthProfile auth) {
+        ArrayNode vars = mapper.createArrayNode();
+        vars.add(collectionVar("baseUrl", env != null && env.getUrl() != null ? env.getUrl() : ""));
+        addAuthCollectionVars(vars, auth);
+        return vars;
+    }
+
+    /** Both mode: baseUrl is empty — actual value comes from the environment file. */
+    private ArrayNode buildBothModeBaseVariable() {
+        ArrayNode vars = mapper.createArrayNode();
+        vars.add(collectionVar("baseUrl", ""));
+        return vars;
+    }
+
+    private void addAuthCollectionVars(ArrayNode vars, AuthProfile auth) {
+        if (auth == null || auth.getType() == null || auth.getType() == AuthType.NONE) return;
+        switch (auth.getType()) {
+            case BEARER ->
+                vars.add(collectionVar("authToken", notBlank(auth.getToken(), "your-bearer-token")));
+            case BASIC -> {
+                vars.add(collectionVar("authUsername", notBlank(auth.getUsername(), "")));
+                vars.add(collectionVar("authPassword", notBlank(auth.getPassword(), "")));
+            }
+            case CLIENT_CREDENTIALS -> {
+                vars.add(collectionVar("authType",     "oauth2"));
+                vars.add(collectionVar("tokenUrl",     notBlank(auth.getTokenUrl(), "")));
+                vars.add(collectionVar("clientId",     notBlank(auth.getClientId(), "")));
+                vars.add(collectionVar("clientSecret", notBlank(auth.getClientSecret(), "")));
+                vars.add(collectionVar("scope",        notBlank(auth.getScope(), "")));
+                vars.add(collectionVar("authToken",    ""));  // populated at runtime
+            }
+            default -> { /* SAML — not supported */ }
+        }
     }
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
@@ -104,37 +172,39 @@ public class PostmanExporter {
     }
 
     /**
-     * Pre-request script: when authType variable = "oauth2", fetches a client-credentials
-     * token before every request and stores it in authToken.
+     * Pre-request script: fetches OAuth2 client-credentials token when authType = "oauth2".
+     * Uses pm.variables.get() which resolves environment → collection variables → globals,
+     * so this works for both single-env and dual-env (both) export modes.
      */
     private ArrayNode buildOauth2PreRequestEvent() {
-        String script = """
-                if (pm.environment.get('authType') === 'oauth2') {
-                    const tokenUrl     = pm.environment.get('tokenUrl');
-                    const clientId     = pm.environment.get('clientId');
-                    const clientSecret = pm.environment.get('clientSecret');
-                    const scope        = pm.environment.get('scope') || '';
-
-                    const body = 'grant_type=client_credentials'
-                        + '&client_id='     + encodeURIComponent(clientId)
-                        + '&client_secret=' + encodeURIComponent(clientSecret)
-                        + (scope ? '&scope=' + encodeURIComponent(scope) : '');
-
-                    pm.sendRequest({
-                        url:    tokenUrl,
-                        method: 'POST',
-                        header: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body:   { mode: 'raw', raw: body }
-                    }, (err, res) => {
-                        if (!err) pm.environment.set('authToken', res.json().access_token);
-                    });
-                }
-                """;
+        String script =
+            "const getVar = key => pm.variables.get(key);\n" +
+            "\n" +
+            "if (getVar('authType') === 'oauth2') {\n" +
+            "    const tokenUrl     = getVar('tokenUrl');\n" +
+            "    const clientId     = getVar('clientId');\n" +
+            "    const clientSecret = getVar('clientSecret');\n" +
+            "    const scope        = getVar('scope') || '';\n" +
+            "\n" +
+            "    const body = 'grant_type=client_credentials'\n" +
+            "        + '&client_id='     + encodeURIComponent(clientId)\n" +
+            "        + '&client_secret=' + encodeURIComponent(clientSecret)\n" +
+            "        + (scope ? '&scope=' + encodeURIComponent(scope) : '');\n" +
+            "\n" +
+            "    pm.sendRequest({\n" +
+            "        url:    tokenUrl,\n" +
+            "        method: 'POST',\n" +
+            "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },\n" +
+            "        body:   { mode: 'raw', raw: body }\n" +
+            "    }, (err, res) => {\n" +
+            "        if (!err) pm.variables.set('authToken', res.json().access_token);\n" +
+            "    });\n" +
+            "}";
 
         ObjectNode scriptNode = mapper.createObjectNode();
         scriptNode.put("type", "text/javascript");
         ArrayNode exec = mapper.createArrayNode();
-        Arrays.stream(script.split("\\n")).forEach(exec::add);
+        Arrays.stream(script.split("\n")).forEach(exec::add);
         scriptNode.set("exec", exec);
 
         ObjectNode event = mapper.createObjectNode();
@@ -146,17 +216,51 @@ public class PostmanExporter {
         return events;
     }
 
-    private ArrayNode buildCollectionVariables() {
-        ArrayNode vars = mapper.createArrayNode();
-        ObjectNode baseUrl = mapper.createObjectNode();
-        baseUrl.put("key",   "baseUrl");
-        baseUrl.put("value", "");
-        baseUrl.put("type",  "string");
-        vars.add(baseUrl);
-        return vars;
+    // ─── Environment file (both mode only) ───────────────────────────────────
+
+    private byte[] buildEnvironmentFile(String label, Environment env, AuthProfile auth)
+            throws Exception {
+        String envName = env != null && env.getName() != null ? env.getName() : label;
+        String baseUrl = env != null && env.getUrl()  != null ? env.getUrl()  : "";
+
+        ArrayNode values = mapper.createArrayNode();
+        values.add(envEntry("baseUrl", baseUrl));
+        addAuthEnvVars(values, auth);
+
+        if (env != null) {
+            for (Param h : nullSafe(env.getHeaders())) {
+                values.add(envEntry("header_" + h.getKey().replace("-", "_"), h.getValue()));
+            }
+        }
+
+        ObjectNode root = mapper.createObjectNode();
+        root.put("name", label + " (" + envName + ")");
+        root.set("values", values);
+        return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
     }
 
-    // ─── Folders (TestGroup → Postman folder) ─────────────────────────────────
+    private void addAuthEnvVars(ArrayNode values, AuthProfile auth) {
+        if (auth == null || auth.getType() == null || auth.getType() == AuthType.NONE) return;
+        switch (auth.getType()) {
+            case BEARER ->
+                values.add(envEntry("authToken", notBlank(auth.getToken(), "your-bearer-token")));
+            case BASIC -> {
+                values.add(envEntry("authUsername", notBlank(auth.getUsername(), "")));
+                values.add(envEntry("authPassword", notBlank(auth.getPassword(), "")));
+            }
+            case CLIENT_CREDENTIALS -> {
+                values.add(envEntry("authType",     "oauth2"));
+                values.add(envEntry("tokenUrl",     notBlank(auth.getTokenUrl(), "")));
+                values.add(envEntry("clientId",     notBlank(auth.getClientId(), "")));
+                values.add(envEntry("clientSecret", notBlank(auth.getClientSecret(), "")));
+                values.add(envEntry("scope",        notBlank(auth.getScope(), "")));
+                values.add(envEntry("authToken",    ""));
+            }
+            default -> { /* SAML — not supported */ }
+        }
+    }
+
+    // ─── Folders & Requests ───────────────────────────────────────────────────
 
     private ArrayNode buildFolders(List<TestGroup> groups) {
         ArrayNode folders = mapper.createArrayNode();
@@ -172,34 +276,21 @@ public class PostmanExporter {
         return folders;
     }
 
-    /**
-     * If the group contains TCs from multiple phases, organise them into
-     * "Setup", "Test Cases", and "Teardown" sub-folders so Postman users
-     * can run each phase independently in the correct order.
-     *
-     * If all TCs are the default TEST phase, keep the list flat — no nesting.
-     */
     private ArrayNode buildGroupItems(List<TestCase> testCases) {
         boolean hasMultiplePhases = testCases.stream()
                 .map(tc -> tc.getPhase() != null ? tc.getPhase() : Phase.TEST)
                 .collect(Collectors.toSet())
                 .size() > 1;
 
-        if (!hasMultiplePhases) {
-            return buildRequests(testCases);
-        }
+        if (!hasMultiplePhases) return buildRequests(testCases);
 
-        // Split by phase and create sub-folders
         ArrayNode items = mapper.createArrayNode();
-
         List<TestCase> setup    = byPhase(testCases, Phase.SETUP);
         List<TestCase> test     = byPhase(testCases, Phase.TEST);
         List<TestCase> teardown = byPhase(testCases, Phase.TEARDOWN);
-
         if (!setup.isEmpty())    items.add(subFolder("Setup",      setup));
         if (!test.isEmpty())     items.add(subFolder("Test Cases", test));
         if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown));
-
         return items;
     }
 
@@ -210,13 +301,11 @@ public class PostmanExporter {
         return folder;
     }
 
-    private List<TestCase> byPhase(List<TestCase> testCases, Phase phase) {
-        return testCases.stream()
+    private List<TestCase> byPhase(List<TestCase> tcs, Phase phase) {
+        return tcs.stream()
                 .filter(tc -> (tc.getPhase() != null ? tc.getPhase() : Phase.TEST) == phase)
                 .collect(Collectors.toList());
     }
-
-    // ─── Requests (TestCase → Postman request item) ───────────────────────────
 
     private ArrayNode buildRequests(List<TestCase> testCases) {
         ArrayNode items = mapper.createArrayNode();
@@ -243,12 +332,12 @@ public class PostmanExporter {
     }
 
     private ObjectNode buildUrl(TestCase tc) {
-        String endpoint      = tc.getEndpoint() != null ? tc.getEndpoint() : "";
+        String      endpoint = tc.getEndpoint() != null ? tc.getEndpoint() : "";
         List<Param> qp       = nullSafe(tc.getQueryParams());
-        String rawQueryString = tc.getQueryParamsAsString();
+        String      rawQs    = tc.getQueryParamsAsString();
 
         StringBuilder raw = new StringBuilder("{{baseUrl}}").append(endpoint);
-        if (!rawQueryString.isBlank()) raw.append("?").append(rawQueryString);
+        if (!rawQs.isBlank()) raw.append("?").append(rawQs);
 
         ObjectNode url = mapper.createObjectNode();
         url.put("raw", raw.toString());
@@ -258,9 +347,7 @@ public class PostmanExporter {
         url.set("host", host);
 
         ArrayNode path = mapper.createArrayNode();
-        Arrays.stream(endpoint.split("/"))
-              .filter(s -> !s.isBlank())
-              .forEach(path::add);
+        Arrays.stream(endpoint.split("/")).filter(s -> !s.isBlank()).forEach(path::add);
         url.set("path", path);
 
         if (!qp.isEmpty()) {
@@ -273,7 +360,6 @@ public class PostmanExporter {
             }
             url.set("query", query);
         }
-
         return url;
     }
 
@@ -293,29 +379,29 @@ public class PostmanExporter {
 
     private ObjectNode buildBody(TestCase tc) {
         List<Param> formParams = nullSafe(tc.getFormParams());
-        String jsonBody        = tc.getJsonBody();
+        String      jsonBody   = tc.getJsonBody();
 
         if (!formParams.isEmpty()) {
-            ObjectNode body      = mapper.createObjectNode();
             ArrayNode urlencoded = mapper.createArrayNode();
             for (Param p : formParams) {
-                ObjectNode entry = mapper.createObjectNode();
-                entry.put("key",   p.getKey());
-                entry.put("value", p.getValue());
-                entry.put("type",  "text");
-                urlencoded.add(entry);
+                ObjectNode e = mapper.createObjectNode();
+                e.put("key",   p.getKey());
+                e.put("value", p.getValue());
+                e.put("type",  "text");
+                urlencoded.add(e);
             }
+            ObjectNode body = mapper.createObjectNode();
             body.put("mode", "urlencoded");
             body.set("urlencoded", urlencoded);
             return body;
         }
 
         if (jsonBody != null && !jsonBody.isBlank()) {
-            ObjectNode body    = mapper.createObjectNode();
-            ObjectNode options = mapper.createObjectNode();
             ObjectNode rawOpts = mapper.createObjectNode();
             rawOpts.put("language", "json");
+            ObjectNode options = mapper.createObjectNode();
             options.set("raw", rawOpts);
+            ObjectNode body = mapper.createObjectNode();
             body.put("mode", "raw");
             body.put("raw",  jsonBody);
             body.set("options", options);
@@ -325,56 +411,15 @@ public class PostmanExporter {
         return null;
     }
 
-    // ─── Environment ──────────────────────────────────────────────────────────
+    // ─── Node builders ────────────────────────────────────────────────────────
 
-    private byte[] buildEnvironment(String label, Environment env, AuthProfile auth)
-            throws Exception {
-        String envName = env != null && env.getName() != null ? env.getName() : label;
-        String baseUrl = env != null && env.getUrl()  != null ? env.getUrl()  : "";
-
-        ArrayNode values = mapper.createArrayNode();
-        values.add(envEntry("baseUrl", baseUrl));
-        addAuthVariables(values, auth);
-
-        // Default headers from environment — exported as reference variables (header_*)
-        if (env != null) {
-            for (Param h : nullSafe(env.getHeaders())) {
-                values.add(envEntry("header_" + h.getKey().replace("-", "_"), h.getValue()));
-            }
-        }
-
-        ObjectNode root = mapper.createObjectNode();
-        root.put("name", label + " (" + envName + ")");
-        root.set("values", values);
-        return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
+    private ObjectNode collectionVar(String key, String value) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("key",   key);
+        node.put("value", value);
+        node.put("type",  "string");
+        return node;
     }
-
-    private void addAuthVariables(ArrayNode values, AuthProfile auth) {
-        if (auth == null || auth.getType() == null || auth.getType() == AuthType.NONE) return;
-
-        switch (auth.getType()) {
-            case BEARER -> values.add(envEntry("authToken",
-                    notBlank(auth.getToken(), "your-bearer-token")));
-
-            case BASIC -> {
-                values.add(envEntry("authUsername", notBlank(auth.getUsername(), "")));
-                values.add(envEntry("authPassword", notBlank(auth.getPassword(), "")));
-            }
-
-            case CLIENT_CREDENTIALS -> {
-                values.add(envEntry("authType",     "oauth2"));
-                values.add(envEntry("tokenUrl",     notBlank(auth.getTokenUrl(), "")));
-                values.add(envEntry("clientId",     notBlank(auth.getClientId(), "")));
-                values.add(envEntry("clientSecret", notBlank(auth.getClientSecret(), "")));
-                values.add(envEntry("scope",        notBlank(auth.getScope(), "")));
-                values.add(envEntry("authToken",    ""));   // populated at runtime by pre-request script
-            }
-
-            default -> { /* SAML — not supported in Postman natively */ }
-        }
-    }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private ObjectNode envEntry(String key, String value) {
         ObjectNode node = mapper.createObjectNode();
@@ -398,6 +443,8 @@ public class PostmanExporter {
         return auth;
     }
 
+    // ─── Lookup helpers ───────────────────────────────────────────────────────
+
     private Environment resolveEnv(List<Environment> envs, SuiteSettings settings, boolean isSource) {
         if (envs == null || settings == null || settings.getExecutionConfig() == null) return null;
         String name = isSource
@@ -414,10 +461,9 @@ public class PostmanExporter {
                 .findFirst().orElse(null);
     }
 
-    /** Collection-level auth type is driven by the source environment (most common case). */
-    private AuthType dominantAuthType(AuthProfile sourceAuth) {
-        if (sourceAuth == null || sourceAuth.getType() == null) return AuthType.NONE;
-        return sourceAuth.getType();
+    private AuthType dominantAuthType(AuthProfile auth) {
+        if (auth == null || auth.getType() == null) return AuthType.NONE;
+        return auth.getType();
     }
 
     private boolean isOauth2(AuthProfile auth) {
