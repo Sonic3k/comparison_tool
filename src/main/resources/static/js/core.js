@@ -140,7 +140,7 @@ async function createSuite() {
     settings: {
       suiteName: name, description: g('cm-desc'),
       version: g('cm-version') || '1.0', createdBy: g('cm-author'), createdDate: now,
-      executionConfig: { mode: 'PARALLEL', timeout: 30, parallelLimit: 10, delayBetweenRequests: 100, retries: 2 },
+      executionConfig: { mode: 'parallel', timeout: 30, parallelLimit: 10, delayBetweenRequests: 100, retries: 2 },
       comparisonConfig: { ignoreFieldsRaw: '', caseSensitive: true, ignoreArrayOrder: false, numericTolerance: 0.001, compareErrorResponses: false }
     },
     environments: [], authProfiles: [], testGroups: []
@@ -178,7 +178,7 @@ function renderSuite() {
   sv('s-desc', s.description);    sv('s-createdBy', s.createdBy);
   sv('s-createdDate', s.createdDate); sv('s-updatedBy', s.lastUpdatedBy);
   sv('s-updatedDate', s.lastUpdatedDate);
-  sv('s-mode', ec.mode || 'PARALLEL'); sv('s-timeout', ec.timeout);
+  sv('s-mode', (ec.mode || 'parallel').toLowerCase()); sv('s-timeout', ec.timeout);
   sv('s-verificationMode', ec.verificationMode || '');
   sv('s-parallelLimit', ec.parallelLimit); sv('s-delay', ec.delayBetweenRequests);
   sv('s-retries', ec.retries);

@@ -127,7 +127,7 @@ function renderAuthProfiles(profiles) {
   document.getElementById('authProfilesTable').innerHTML = profiles.length
     ? profiles.map((p, i) => `<tr>
         <td><strong>${esc(p.name)}</strong></td>
-        <td><span class="bs s-pending">${esc(p.type || p.authType || 'NONE')}</span></td>
+        <td><span class="bs s-pending">${esc((p.type || p.authType || 'none').toUpperCase())}</span></td>
         <td style="color:#6b7280">${esc(p.description || '')}</td>
         <td class="mono" style="color:#6b7280">${esc(p.tokenUrl || '')}</td>
         <td>
@@ -143,7 +143,7 @@ function showAuthModal(idx = -1) {
   document.getElementById('authModalTitle').textContent = idx >= 0 ? 'Edit Auth Profile' : 'Add Auth Profile';
   if (idx >= 0) {
     const p = suite.authProfiles[idx];
-    sv('ap-name', p.name); sv('ap-type', p.type || p.authType || 'NONE');
+    sv('ap-name', p.name); sv('ap-type', (p.type || p.authType || 'none').toLowerCase());
     sv('ap-desc', p.description); sv('ap-tokenUrl', p.tokenUrl);
     sv('ap-username', p.username); sv('ap-password', p.password);
     sv('ap-clientId', p.clientId); sv('ap-clientSecret', p.clientSecret);
@@ -151,7 +151,7 @@ function showAuthModal(idx = -1) {
   } else {
     ['ap-name','ap-desc','ap-tokenUrl','ap-username','ap-password',
      'ap-clientId','ap-clientSecret','ap-scope','ap-token'].forEach(id => sv(id, ''));
-    sv('ap-type', 'NONE');
+    sv('ap-type', 'none');
   }
   onAuthTypeChange();
   openModal('authModal');
@@ -183,12 +183,12 @@ async function saveAuthProfile() {
 }
 
 function onAuthTypeChange() {
-  const t = g('ap-type');
-  vis('ap-tokenUrl-wrap', t === 'BASIC' || t === 'CLIENT_CREDENTIALS');
-  vis('ap-user-wrap',  t === 'BASIC');
-  vis('ap-pass-wrap',  t === 'BASIC');
-  vis('ap-cid-wrap',   t === 'CLIENT_CREDENTIALS');
-  vis('ap-csec-wrap',  t === 'CLIENT_CREDENTIALS');
-  vis('ap-scope-wrap', t === 'CLIENT_CREDENTIALS');
-  vis('ap-token-wrap', t === 'BEARER');
+  const t = (g('ap-type') || '').toLowerCase();
+  vis('ap-tokenUrl-wrap', t === 'basic' || t === 'client_credentials');
+  vis('ap-user-wrap',  t === 'basic');
+  vis('ap-pass-wrap',  t === 'basic');
+  vis('ap-cid-wrap',   t === 'client_credentials');
+  vis('ap-csec-wrap',  t === 'client_credentials');
+  vis('ap-scope-wrap', t === 'client_credentials');
+  vis('ap-token-wrap', t === 'bearer');
 }
