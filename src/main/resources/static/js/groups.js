@@ -45,7 +45,7 @@ function renderGroupGrid(groups) {
         </div>
       </div>`;
     }).join('') +
-    `<div class="add-group-card" onclick="openModal('addGroupModal')">
+    `<div class="add-group-card" onclick="openImportGroupModal()">
       <div class="plus">＋</div>
       <div style="font-size:13px;font-weight:500">Add Test Group</div>
     </div>`;
