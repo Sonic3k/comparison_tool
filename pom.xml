@@ -65,6 +65,11 @@
 			<groupId>com.fasterxml.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-xml</artifactId>
 		</dependency>
+		<!-- Jackson YAML for Bruno export (OpenAPI 3.0 YAML) -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-yaml</artifactId>
+		</dependency>
 		<!-- Commons IO for file operations -->
 		<dependency>
 			<groupId>commons-io</groupId>

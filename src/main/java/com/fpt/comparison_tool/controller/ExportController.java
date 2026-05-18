@@ -1,5 +1,7 @@
 package com.fpt.comparison_tool.controller;
 
+import com.fpt.comparison_tool.generator.BrunoExporter;
+import com.fpt.comparison_tool.generator.BrunoExporter.BrunoExport;
 import com.fpt.comparison_tool.generator.ExcelGenerator;
 import com.fpt.comparison_tool.generator.JmeterExporter;
 import com.fpt.comparison_tool.generator.JmeterExporter.JmxExport;
@@ -26,6 +28,7 @@ public class ExportController {
     private final XmlGenerator    xmlGenerator    = new XmlGenerator();
     private final PostmanExporter postmanExporter = new PostmanExporter();
     private final JmeterExporter  jmeterExporter  = new JmeterExporter();
+    private final BrunoExporter   brunoExporter   = new BrunoExporter();
     private final ObjectMapper    objectMapper    = new ObjectMapper();
 
     public ExportController(SessionService session) { this.session = session; }
@@ -95,6 +98,29 @@ public class ExportController {
                         entry(name + "_source.jmx", e.sourceJmx()),
                         entry(name + "_target.jmx", e.targetJmx())),
                         name + "_jmeter.zip", "application/zip");
+            }
+            default -> throw new IllegalArgumentException("Invalid mode: " + mode);
+        };
+    }
+
+    @GetMapping("/bruno")
+    public ResponseEntity<byte[]> exportBruno(
+            @RequestParam(defaultValue = "target") String mode) throws Exception {
+        requireSuite();
+        TestSuite suite = session.getTestSuite();
+        String name = safeName(suite);
+        return switch (mode.toLowerCase()) {
+            case "source" -> file(brunoExporter.exportSingle(suite, true),
+                    name + "_source_bruno.yaml", "application/yaml");
+            case "target" -> file(brunoExporter.exportSingle(suite, false),
+                    name + "_target_bruno.yaml", "application/yaml");
+            case "both"   -> {
+                BrunoExport e = brunoExporter.exportBoth(suite);
+                yield file(zip(name,
+                        entry(name + "_collection.yaml", e.collectionYaml()),
+                        entry(name + "_source-env.json", e.sourceEnvJson()),
+                        entry(name + "_target-env.json", e.targetEnvJson())),
+                        name + "_bruno.zip", "application/zip");
             }
             default -> throw new IllegalArgumentException("Invalid mode: " + mode);
         };

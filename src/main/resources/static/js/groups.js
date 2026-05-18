@@ -147,6 +147,11 @@ function openGroupDetail(name) {
     document.getElementById('groupExportMenu').classList.remove('open');
     openExportModal('postman', name);
   };
+  document.getElementById('groupExportBruno').onclick = e => {
+    e.preventDefault();
+    document.getElementById('groupExportMenu').classList.remove('open');
+    openExportModal('bruno', name);
+  };
 
   updateGroupDetailHeader(grp);
   renderDetailStats(grp);

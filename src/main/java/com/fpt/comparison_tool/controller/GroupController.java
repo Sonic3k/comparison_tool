@@ -1,6 +1,8 @@
 package com.fpt.comparison_tool.controller;
 
 import com.fpt.comparison_tool.dto.ApiResponse;
+import com.fpt.comparison_tool.generator.BrunoExporter;
+import com.fpt.comparison_tool.generator.BrunoExporter.BrunoExport;
 import com.fpt.comparison_tool.generator.PostmanExporter;
 import com.fpt.comparison_tool.generator.PostmanExporter.PostmanExport;
 import com.fpt.comparison_tool.generator.XmlGenerator;
@@ -28,6 +30,7 @@ public class GroupController {
     private final JsonImportService jsonImport      = new JsonImportService();
     private final XmlGenerator      xmlGenerator    = new XmlGenerator();
     private final PostmanExporter   postmanExporter = new PostmanExporter();
+    private final BrunoExporter     brunoExporter   = new BrunoExporter();
 
     public GroupController(SessionService session) {
         this.session = session;
@@ -124,6 +127,34 @@ public class GroupController {
                         zipEntry(safeName + "_source-env.json", e.sourceEnvJson()),
                         zipEntry(safeName + "_target-env.json", e.targetEnvJson())),
                         safeName + "_postman.zip", "application/zip");
+            }
+            default -> throw new IllegalArgumentException("Invalid mode: " + mode);
+        };
+    }
+
+    // ─── Export single group as Bruno (OpenAPI YAML + env JSON) ───────────────
+
+    @GetMapping("/{name}/export/bruno")
+    public ResponseEntity<byte[]> exportGroupBruno(
+            @PathVariable("name") String name,
+            @RequestParam(defaultValue = "target") String mode) throws Exception {
+        requireSuite();
+        TestGroup group = requireGroup(name);
+        TestSuite synthetic = buildSyntheticSuite(group);
+        String safeName = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+
+        return switch (mode.toLowerCase()) {
+            case "source" -> file(brunoExporter.exportSingle(synthetic, true),
+                    safeName + "_source_bruno.yaml", "application/yaml");
+            case "target" -> file(brunoExporter.exportSingle(synthetic, false),
+                    safeName + "_target_bruno.yaml", "application/yaml");
+            case "both"   -> {
+                BrunoExport e = brunoExporter.exportBoth(synthetic);
+                yield file(zip(
+                        zipEntry(safeName + "_collection.yaml", e.collectionYaml()),
+                        zipEntry(safeName + "_source-env.json", e.sourceEnvJson()),
+                        zipEntry(safeName + "_target-env.json", e.targetEnvJson())),
+                        safeName + "_bruno.zip", "application/zip");
             }
             default -> throw new IllegalArgumentException("Invalid mode: " + mode);
         };

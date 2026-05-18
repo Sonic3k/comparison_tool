@@ -249,6 +249,13 @@ const EXPORT_CONFIG = {
     bothDesc: 'Exports source.jmx + target.jmx as .zip',
     endpoint: '/api/export/jmeter',
   },
+  bruno: {
+    title:    '📦 Export to Bruno',
+    desc:     'Select which environment(s) to export. Each option generates an OpenAPI 3.0 YAML collection importable into Bruno.',
+    bothDesc: 'Exports collection.yaml + 2 environment files as .zip',
+    endpoint: '/api/export/bruno',
+    groupEndpoint: name => `/api/groups/${encodeURIComponent(name)}/export/bruno`,
+  },
 };
 
 function openExportModal(format, groupName) {

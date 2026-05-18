@@ -19,6 +19,7 @@
       <a href="/api/export/xml">📄 Download XML</a>
       <a href="/api/export/json">📋 Download JSON</a>
       <a href="#" onclick="openExportModal('postman'); return false;">📬 Export to Postman…</a>
+      <a href="#" onclick="openExportModal('bruno');   return false;">📦 Export to Bruno…</a>
       <a href="#" onclick="openExportModal('jmeter');  return false;">⚡ Export to JMeter…</a>
       <div class="divider"></div>
       <a href="/api/export/template/excel">📋 Excel Template</a>
@@ -267,6 +268,7 @@
             <div class="export-menu" id="groupExportMenu" style="position:absolute;right:0;top:calc(100% + 4px);min-width:240px">
               <a href="#" id="groupExportXml">📄 Download XML</a>
               <a href="#" id="groupExportPostman">📬 Export to Postman…</a>
+              <a href="#" id="groupExportBruno">📦 Export to Bruno…</a>
             </div>
           </div>
           <button class="btn btn-sm toggle-on"   id="btnToggleGroup" onclick="toggleGroup(currentGroup)">● Disable Group</button>
