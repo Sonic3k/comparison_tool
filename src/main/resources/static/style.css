@@ -218,3 +218,18 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .pm-option-body { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
 .pm-option-label { font-weight:600; font-size:13px; color:#111827; }
 .pm-option-url { font-size:11px; color:#6b7280; word-break:break-all; }
+
+/* cURL display box */
+.curl-box {
+  background: #0f172a;
+  color: #e5e7eb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+  line-height: 1.5;
+}

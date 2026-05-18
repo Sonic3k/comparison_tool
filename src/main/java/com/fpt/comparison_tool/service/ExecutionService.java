@@ -184,6 +184,41 @@ public class ExecutionService {
 
     // ── Single TC ─────────────────────────────────────────────────────────────
 
+    /**
+     * Re-run one TC synchronously. Used for the "↻" button on each row in the
+     * detail view — does NOT touch the suite-wide ExecutionProgress, does NOT
+     * go through the async queue, does NOT run setup/teardown.
+     *
+     * Returns the TC with its result freshly updated, or throws if the TC
+     * cannot be located in the suite.
+     */
+    public TestCase executeSingleSync(TestSuite suite, String groupName, String caseId) {
+        TestGroup group = suite.getTestGroups().stream()
+                .filter(g -> g.getName().equals(groupName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Group not found: " + groupName));
+
+        TestCase tc = group.getTestCases().stream()
+                .filter(c -> c.getId().equals(caseId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Case not found: " + caseId));
+
+        ExecutionConfig ec = suite.getSettings().getExecutionConfig();
+        Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
+        Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
+
+        // Single-case re-run has no extracted variables — placeholders stay literal
+        Map<String, String> variables = new ConcurrentHashMap<>();
+
+        // Use a throwaway progress so executeAndRecord doesn't touch the real one
+        ExecutionProgress dummy = new ExecutionProgress();
+        dummy.start(1);
+        executeAndRecord(tc, group, suite, sourceEnv, targetEnv, dummy, variables);
+        dummy.finish();
+
+        return tc;
+    }
+
     private void executeAndRecord(TestCase tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress,

@@ -2,11 +2,14 @@ package com.fpt.comparison_tool.controller;
 
 import com.fpt.comparison_tool.dto.ApiResponse;
 import com.fpt.comparison_tool.dto.ExecutionProgress;
+import com.fpt.comparison_tool.model.*;
+import com.fpt.comparison_tool.service.CurlBuilder;
 import com.fpt.comparison_tool.service.ExecutionService;
 import com.fpt.comparison_tool.service.SessionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,10 +19,14 @@ public class ExecutionController {
 
     private final SessionService session;
     private final ExecutionService executionService;
+    private final CurlBuilder curlBuilder;
 
-    public ExecutionController(SessionService session, ExecutionService executionService) {
+    public ExecutionController(SessionService session,
+                               ExecutionService executionService,
+                               CurlBuilder curlBuilder) {
         this.session          = session;
         this.executionService = executionService;
+        this.curlBuilder      = curlBuilder;
     }
 
     /**
@@ -33,9 +40,6 @@ public class ExecutionController {
             return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
         }
         ExecutionProgress progress = session.getProgress();
-        // Block only if a job is genuinely still in flight.
-        // A previous run that finished (completed=true) or a stuck flag
-        // from a crashed run should not prevent a new execution.
         if (progress.isRunning() && !progress.isCompleted()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Execution already running"));
         }
@@ -46,11 +50,84 @@ public class ExecutionController {
     }
 
     /**
-     * GET /api/execute/progress
-     * Frontend polls this every second.
+     * POST /api/execute/case
+     * Body: { "groupName": "User APIs", "caseId": "TC001" }
+     *
+     * Re-runs a single test case synchronously and returns it with fresh result.
+     * Does not affect the suite-wide ExecutionProgress, does not run setup/teardown.
+     */
+    @PostMapping("/case")
+    public ResponseEntity<ApiResponse<TestCase>> runSingleCase(
+            @RequestBody Map<String, String> body) {
+        if (!session.hasSuite()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
+        }
+        String groupName = body.get("groupName");
+        String caseId    = body.get("caseId");
+        if (groupName == null || caseId == null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("groupName and caseId are required"));
+        }
+        try {
+            TestCase tc = executionService.executeSingleSync(session.getTestSuite(), groupName, caseId);
+            return ResponseEntity.ok(ApiResponse.ok("Re-run complete", tc));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Re-run failed: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/execute/case/curl?groupName=...&caseId=...
+     *
+     * Returns the cURL commands that would actually be sent against source and
+     * target environments — for manual debugging in a terminal.
+     * Returns: { source: "curl ...", target: "curl ..." }
+     */
+    @GetMapping("/case/curl")
+    public ResponseEntity<ApiResponse<Map<String, String>>> getCaseCurl(
+            @RequestParam String groupName,
+            @RequestParam String caseId) {
+        if (!session.hasSuite()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
+        }
+        TestSuite suite = session.getTestSuite();
+        TestGroup group = suite.getTestGroups().stream()
+                .filter(g -> g.getName().equals(groupName)).findFirst().orElse(null);
+        if (group == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Group not found: " + groupName));
+        }
+        TestCase tc = group.getTestCases().stream()
+                .filter(c -> c.getId().equals(caseId)).findFirst().orElse(null);
+        if (tc == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Case not found: " + caseId));
+        }
+
+        ExecutionConfig ec = suite.getSettings().getExecutionConfig();
+        Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
+        Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
+
+        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
+        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+
+        Map<String, String> result = new HashMap<>();
+        result.put("source", curlBuilder.build(sourceEnv, tc, sourceAuth));
+        result.put("target", curlBuilder.build(targetEnv, tc, targetAuth));
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    /**
+     * GET /api/execute/progress — frontend polls this every second.
      */
     @GetMapping("/progress")
     public ResponseEntity<ApiResponse<ExecutionProgress>> getProgress() {
         return ResponseEntity.ok(ApiResponse.ok(session.getProgress()));
+    }
+
+    private AuthProfile findProfile(TestSuite suite, String name) {
+        if (name == null || suite.getAuthProfiles() == null) return null;
+        return suite.getAuthProfiles().stream()
+                .filter(p -> name.equals(p.getName())).findFirst().orElse(null);
     }
 }

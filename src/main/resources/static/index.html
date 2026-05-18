@@ -459,6 +459,41 @@
 </div>
 
 
+<div class="overlay" id="curlModal">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-header">
+      <span class="modal-title">cURL for <span id="curlCaseId" class="mono"></span></span>
+      <button class="modal-close" onclick="closeModal('curlModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:#6b7280;margin:0 0 12px">
+        These are the exact requests the tool sends. Paste into a terminal to debug manually.
+        Variables like <code>{{varName}}</code> are not resolved here.
+      </p>
+
+      <div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <strong style="font-size:13px;color:#0369a1">Source</strong>
+          <button class="btn btn-outline btn-xs" onclick="copyCurl('source')">📋 Copy</button>
+        </div>
+        <pre id="curlSource" class="curl-box"></pre>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <strong style="font-size:13px;color:#b45309">Target</strong>
+          <button class="btn btn-outline btn-xs" onclick="copyCurl('target')">📋 Copy</button>
+        </div>
+        <pre id="curlTarget" class="curl-box"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('curlModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+
 <div class="overlay" id="importGroupModal">
   <div class="modal">
     <div class="modal-header">

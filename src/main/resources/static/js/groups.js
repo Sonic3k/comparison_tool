@@ -202,6 +202,8 @@ function renderDetailCases(grp) {
               title="${disabled ? 'Enable' : 'Disable'}">
               ${disabled ? '○' : '●'}
             </button>
+            <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this case only">↻</button>
+            <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
             <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')">Edit</button>
             <button class="btn btn-outline btn-xs" style="color:var(--red);margin-left:3px" onclick="deleteCase('${esc(grp.name)}','${esc(tc.id)}')">✕</button>
           </td>
@@ -410,6 +412,48 @@ async function deleteCase(groupName, caseId) {
 // ─── Execution ────────────────────────────────────────────────────────────────
 async function runAll()       { await startExec([]); }
 async function runGroup(name) { await startExec([name]); }
+
+// ─── Re-run a single case ─────────────────────────────────────────────────────
+async function rerunCase(groupName, caseId, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⟳'; }
+  try {
+    const res = await api('POST', '/execute/case', { groupName, caseId });
+    if (!res.success) { toast(res.message, true); return; }
+    const updated = res.data;
+    // Replace TC in local suite + re-render only this group's detail rows
+    const grp = suite.testGroups.find(g => g.name === groupName);
+    if (grp) {
+      const idx = grp.testCases.findIndex(c => c.id === caseId);
+      if (idx >= 0) grp.testCases[idx] = updated;
+      renderDetailCases(grp);
+      renderDetailStats(grp);
+    }
+    renderGroupGrid(suite.testGroups);
+    const st = (updated.result && updated.result.status) || 'pending';
+    toast(`Re-ran ${caseId}: ${st}`);
+  } catch (e) {
+    toast('Re-run failed: ' + e.message, true);
+  }
+}
+
+// ─── Show cURL for a case ─────────────────────────────────────────────────────
+async function showCurl(groupName, caseId) {
+  const res = await api('GET', `/execute/case/curl?groupName=${encodeURIComponent(groupName)}&caseId=${encodeURIComponent(caseId)}`);
+  if (!res.success) { toast(res.message, true); return; }
+  const { source, target } = res.data;
+  document.getElementById('curlCaseId').textContent = caseId;
+  document.getElementById('curlSource').textContent = source || '# No source env';
+  document.getElementById('curlTarget').textContent = target || '# No target env';
+  openModal('curlModal');
+}
+
+function copyCurl(which) {
+  const el = document.getElementById(which === 'source' ? 'curlSource' : 'curlTarget');
+  navigator.clipboard.writeText(el.textContent).then(
+    () => toast(`Copied ${which} cURL`),
+    () => toast('Copy failed', true)
+  );
+}
 
 async function startExec(groups) {
   const res = await api('POST', '/execute', { groups });
