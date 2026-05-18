@@ -262,7 +262,13 @@
         <div style="display:flex;gap:8px">
           <button class="btn btn-teal btn-sm"    id="btnRunGroup">▶ Run Group</button>
           <button class="btn btn-outline btn-sm" id="btnAddCase">+ Add Case</button>
-          <button class="btn btn-outline btn-sm" id="btnExportGroupXml">⬇ XML</button>
+          <div class="export-wrap" style="position:relative">
+            <button class="btn btn-outline btn-sm" onclick="toggleGroupExportMenu()">⬇ Export ▾</button>
+            <div class="export-menu" id="groupExportMenu" style="position:absolute;right:0;top:calc(100% + 4px);min-width:240px">
+              <a href="#" id="groupExportXml">📄 Download XML</a>
+              <a href="#" id="groupExportPostman">📬 Export to Postman…</a>
+            </div>
+          </div>
           <button class="btn btn-sm toggle-on"   id="btnToggleGroup" onclick="toggleGroup(currentGroup)">● Disable Group</button>
           <button class="btn btn-outline btn-sm" style="color:var(--red)" id="btnDeleteGroup">Delete Group</button>
         </div>

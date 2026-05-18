@@ -137,7 +137,16 @@ function openGroupDetail(name) {
   document.getElementById('btnRunGroup').onclick    = () => runGroup(name);
   document.getElementById('btnAddCase').onclick     = () => showCaseModal(name);
   document.getElementById('btnDeleteGroup').onclick = () => deleteGroupByName(name);
-  document.getElementById('btnExportGroupXml').onclick = () => exportGroupXml(name);
+  document.getElementById('groupExportXml').onclick = e => {
+    e.preventDefault();
+    document.getElementById('groupExportMenu').classList.remove('open');
+    exportGroupXml(name);
+  };
+  document.getElementById('groupExportPostman').onclick = e => {
+    e.preventDefault();
+    document.getElementById('groupExportMenu').classList.remove('open');
+    openExportModal('postman', name);
+  };
 
   updateGroupDetailHeader(grp);
   renderDetailStats(grp);

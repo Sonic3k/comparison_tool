@@ -1,8 +1,11 @@
 package com.fpt.comparison_tool.controller;
 
 import com.fpt.comparison_tool.dto.ApiResponse;
+import com.fpt.comparison_tool.generator.PostmanExporter;
+import com.fpt.comparison_tool.generator.PostmanExporter.PostmanExport;
 import com.fpt.comparison_tool.generator.XmlGenerator;
 import com.fpt.comparison_tool.model.TestGroup;
+import com.fpt.comparison_tool.model.TestSuite;
 import com.fpt.comparison_tool.service.JsonImportService;
 import com.fpt.comparison_tool.service.SessionService;
 import com.fpt.comparison_tool.service.XmlImportService;
@@ -11,16 +14,20 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @RestController
 @RequestMapping("/api/groups")
 public class GroupController {
 
     private final SessionService    session;
-    private final XmlImportService  xmlImport    = new XmlImportService();
-    private final JsonImportService jsonImport   = new JsonImportService();
-    private final XmlGenerator      xmlGenerator = new XmlGenerator();
+    private final XmlImportService  xmlImport       = new XmlImportService();
+    private final JsonImportService jsonImport      = new JsonImportService();
+    private final XmlGenerator      xmlGenerator    = new XmlGenerator();
+    private final PostmanExporter   postmanExporter = new PostmanExporter();
 
     public GroupController(SessionService session) {
         this.session = session;
@@ -84,6 +91,76 @@ public class GroupController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.APPLICATION_XML)
                 .body(out.toByteArray());
+    }
+
+    // ─── Export single group as Postman Collection ────────────────────────────
+
+    /**
+     * GET /api/groups/{name}/export/postman?mode=source|target|both
+     *
+     * Re-uses PostmanExporter by building a synthetic TestSuite containing only
+     * this group. Settings, environments and auth profiles are reused from the
+     * current session so generated auth + base URL are identical to a full
+     * suite export.
+     */
+    @GetMapping("/{name}/export/postman")
+    public ResponseEntity<byte[]> exportGroupPostman(
+            @PathVariable("name") String name,
+            @RequestParam(defaultValue = "target") String mode) throws Exception {
+        requireSuite();
+        TestGroup group = requireGroup(name);
+        TestSuite synthetic = buildSyntheticSuite(group);
+        String safeName = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+
+        return switch (mode.toLowerCase()) {
+            case "source" -> file(postmanExporter.exportSingle(synthetic, true),
+                    safeName + "_source_collection.json", "application/json");
+            case "target" -> file(postmanExporter.exportSingle(synthetic, false),
+                    safeName + "_target_collection.json", "application/json");
+            case "both"   -> {
+                PostmanExport e = postmanExporter.exportBoth(synthetic);
+                yield file(zip(
+                        zipEntry(safeName + "_collection.json", e.collectionJson()),
+                        zipEntry(safeName + "_source-env.json", e.sourceEnvJson()),
+                        zipEntry(safeName + "_target-env.json", e.targetEnvJson())),
+                        safeName + "_postman.zip", "application/zip");
+            }
+            default -> throw new IllegalArgumentException("Invalid mode: " + mode);
+        };
+    }
+
+    private TestSuite buildSyntheticSuite(TestGroup group) {
+        TestSuite full = session.getTestSuite();
+        TestSuite copy = new TestSuite();
+        copy.setSettings(full.getSettings());
+        copy.setEnvironments(full.getEnvironments());
+        copy.setAuthProfiles(full.getAuthProfiles());
+        List<TestGroup> oneGroup = new ArrayList<>();
+        oneGroup.add(group);
+        copy.setTestGroups(oneGroup);
+        return copy;
+    }
+
+    private ResponseEntity<byte[]> file(byte[] data, String filename, String contentType) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .contentLength(data.length)
+                .body(data);
+    }
+
+    private record ZipEntry2(String name, byte[] data) {}
+    private ZipEntry2 zipEntry(String name, byte[] data) { return new ZipEntry2(name, data); }
+    private byte[] zip(ZipEntry2... entries) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            for (ZipEntry2 e : entries) {
+                zip.putNextEntry(new ZipEntry(e.name()));
+                zip.write(e.data());
+                zip.closeEntry();
+            }
+        }
+        return out.toByteArray();
     }
 
     // ─── Import single group from XML ─────────────────────────────────────────

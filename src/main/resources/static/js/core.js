@@ -60,6 +60,19 @@ function showSuiteView() {
 
 // ─── Export dropdown ──────────────────────────────────────────────────────────
 function toggleExport() { document.getElementById('exportMenu').classList.toggle('open'); }
+
+function toggleGroupExportMenu() {
+  const el = document.getElementById('groupExportMenu');
+  if (el) el.classList.toggle('open');
+}
+
+// Close group export menu when clicking outside it
+document.addEventListener('click', e => {
+  const menu = document.getElementById('groupExportMenu');
+  if (!menu || !menu.classList.contains('open')) return;
+  if (e.target.closest('.export-wrap')) return; // click inside wrap — let it handle itself
+  menu.classList.remove('open');
+});
 document.addEventListener('click', e => {
   if (!e.target.closest('.export-wrap')) document.getElementById('exportMenu')?.classList.remove('open');
 });
@@ -220,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Generic Export Modal (Postman + JMeter) ──────────────────────────────────
 
 let _exportFormat = 'postman';
+let _exportGroupName = null; // when set, export targets only this group
 
 const EXPORT_CONFIG = {
   postman: {
@@ -227,6 +241,7 @@ const EXPORT_CONFIG = {
     desc:     'Select which environment(s) to export. Each option generates a ready-to-import Postman collection.',
     bothDesc: 'Exports collection.json + 2 environment files as .zip',
     endpoint: '/api/export/postman',
+    groupEndpoint: name => `/api/groups/${encodeURIComponent(name)}/export/postman`,
   },
   jmeter: {
     title:    '⚡ Export to JMeter',
@@ -236,13 +251,15 @@ const EXPORT_CONFIG = {
   },
 };
 
-function openExportModal(format) {
+function openExportModal(format, groupName) {
   _exportFormat = format;
+  _exportGroupName = groupName || null;
   const cfg  = EXPORT_CONFIG[format];
   const ec   = suite?.settings?.executionConfig || {};
   const envs = suite?.environments || [];
 
-  document.getElementById('exportModalTitle').textContent = cfg.title;
+  const scopeNote = groupName ? ` — group "${groupName}" only` : '';
+  document.getElementById('exportModalTitle').textContent = cfg.title + scopeNote;
   document.getElementById('exportModalDesc').textContent  = cfg.desc;
   document.getElementById('exportBothDesc').textContent   = cfg.bothDesc;
 
@@ -266,8 +283,14 @@ function onExportModeChange() {
 }
 
 async function downloadExport() {
-  const mode     = document.querySelector('input[name="pmMode"]:checked')?.value || 'target';
-  const endpoint = EXPORT_CONFIG[_exportFormat]?.endpoint || '/api/export/postman';
+  const mode = document.querySelector('input[name="pmMode"]:checked')?.value || 'target';
+  const cfg  = EXPORT_CONFIG[_exportFormat] || EXPORT_CONFIG.postman;
+  let endpoint;
+  if (_exportGroupName && typeof cfg.groupEndpoint === 'function') {
+    endpoint = cfg.groupEndpoint(_exportGroupName);
+  } else {
+    endpoint = cfg.endpoint;
+  }
   closeModal('exportModal');
 
   try {
