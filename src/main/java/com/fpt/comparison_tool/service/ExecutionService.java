@@ -467,7 +467,17 @@ public class ExecutionService {
         copy.setAuthor(tc.getAuthor());
         copy.setExtractVariables(tc.getExtractVariables());
         copy.setComparisonConfig(tc.getComparisonConfig());
-        copy.setAutomationConfig(tc.getAutomationConfig());
+        copy.setAutomationConfig(substituteAutomation(tc.getAutomationConfig(), variables));
+        return copy;
+    }
+
+    private AutomationConfig substituteAutomation(AutomationConfig source, Map<String, String> variables) {
+        if (source == null) return null;
+        AutomationConfig copy = new AutomationConfig();
+        copy.setExpectedStatus(substituteVars(source.getExpectedStatus(), variables));
+        copy.setExpectedBody(substituteVars(source.getExpectedBody(), variables));
+        copy.setExpectedHeaders(substituteVars(source.getExpectedHeaders(), variables));
+        copy.setMaxResponseTime(source.getMaxResponseTime());
         return copy;
     }
 
