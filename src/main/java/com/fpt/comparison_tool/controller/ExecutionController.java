@@ -33,9 +33,13 @@ public class ExecutionController {
             return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
         }
         ExecutionProgress progress = session.getProgress();
-        if (progress.isRunning()) {
+        // Block only if a job is genuinely still in flight.
+        // A previous run that finished (completed=true) or a stuck flag
+        // from a crashed run should not prevent a new execution.
+        if (progress.isRunning() && !progress.isCompleted()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Execution already running"));
         }
+        progress.reset();
         List<String> groupFilter = body != null ? body.get("groups") : null;
         executionService.startAsync(session.getTestSuite(), groupFilter, progress);
         return ResponseEntity.ok(ApiResponse.ok("Execution started", null));

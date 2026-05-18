@@ -45,17 +45,26 @@ public class ExecutionService {
     }
 
     public void startAsync(TestSuite suite, List<String> groupFilter, ExecutionProgress progress) {
-        List<TestGroup> allGroups = filterGroups(suite, groupFilter);
-        ExecutionConfig ec0 = suite.getSettings().getExecutionConfig();
-        VerificationMode suiteFilter = ec0.getVerificationMode();
+        List<TestGroup> allGroups;
+        int total;
+        try {
+            allGroups = filterGroups(suite, groupFilter);
+            ExecutionConfig ec0 = suite.getSettings().getExecutionConfig();
+            VerificationMode suiteFilter = ec0.getVerificationMode();
 
-        // Count only TCs that will actually run
-        int total = allGroups.stream()
-                .mapToInt(g -> (int) g.getTestCases().stream()
-                        .filter(TestCase::isEnabled)
-                        .filter(tc -> !shouldSkip(tc, suiteFilter))
-                        .count())
-                .sum();
+            // Count only TCs that will actually run
+            total = allGroups.stream()
+                    .mapToInt(g -> (int) g.getTestCases().stream()
+                            .filter(TestCase::isEnabled)
+                            .filter(tc -> !shouldSkip(tc, suiteFilter))
+                            .count())
+                    .sum();
+        } catch (Exception e) {
+            // Setup failed before we even started — make sure flag is clean
+            progress.abort("Setup error: " + e.getMessage());
+            return;
+        }
+
         progress.start(total);
 
         CompletableFuture.runAsync(() -> {
@@ -102,7 +111,11 @@ public class ExecutionService {
             } finally {
                 if (progress.isRunning()) progress.finish();
             }
-        }, executor);
+        }, executor).exceptionally(ex -> {
+            // Reached only if the executor refuses the task — make sure flag is cleared
+            progress.abort("Executor rejected: " + ex.getMessage());
+            return null;
+        });
     }
 
     // ── Group execution with phases ───────────────────────────────────────────
