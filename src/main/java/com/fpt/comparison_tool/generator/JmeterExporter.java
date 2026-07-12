@@ -263,7 +263,7 @@ public class JmeterExporter {
                "testclass", "HTTPSamplerProxy", "testname", name,
                "enabled", String.valueOf(tc.isEnabled()));
         x.prop("stringProp", "HTTPSampler.method",   method);
-        x.prop("stringProp", "HTTPSampler.path",     fullPath);
+        x.prop("stringProp", "HTTPSampler.path",     vars(fullPath));
         x.prop("stringProp", "HTTPSampler.contentEncoding", "UTF-8");
         x.prop("boolProp",   "HTTPSampler.follow_redirects", "true");
         x.prop("boolProp",   "HTTPSampler.auto_redirects",   "false");
@@ -273,6 +273,7 @@ public class JmeterExporter {
         x.close("HTTPSamplerProxy");
         x.open("hashTree");
         buildPerRequestHeaders(x, tc);
+        buildJsonExtractor(x, tc);
         x.close("hashTree");
     }
 
@@ -288,7 +289,7 @@ public class JmeterExporter {
                 x.open("elementProp", "name", p.getKey(), "elementType", "HTTPArgument");
                 x.prop("boolProp",   "HTTPArgument.always_encode", "true");
                 x.prop("stringProp", "Argument.name",              p.getKey());
-                x.prop("stringProp", "Argument.value",             p.getValue());
+                x.prop("stringProp", "Argument.value",             vars(p.getValue()));
                 x.prop("stringProp", "Argument.metadata",          "=");
                 x.close("elementProp");
             }
@@ -303,7 +304,7 @@ public class JmeterExporter {
             x.open("collectionProp", "name", "Arguments.arguments");
             x.open("elementProp", "name", "", "elementType", "HTTPArgument");
             x.prop("boolProp",   "HTTPArgument.always_encode", "false");
-            x.prop("stringProp", "Argument.value",             jb);
+            x.prop("stringProp", "Argument.value",             vars(jb));
             x.prop("stringProp", "Argument.metadata",          "=");
             x.close("elementProp");
             x.close("collectionProp");
@@ -329,7 +330,7 @@ public class JmeterExporter {
         x.open("HeaderManager", "guiclass", "HeaderPanel",
                "testclass", "HeaderManager", "testname", "Request Headers", "enabled", "true");
         x.open("collectionProp", "name", "HeaderManager.headers");
-        for (String[] h : parsed) headerEntry(x, h[0], h[1]);
+        for (String[] h : parsed) headerEntry(x, h[0], vars(h[1]));
         x.close("collectionProp");
         x.close("HeaderManager");
         x.open("hashTree"); x.close("hashTree");
@@ -359,6 +360,40 @@ public class JmeterExporter {
         return nullSafe(suite.getAuthProfiles()).stream()
                 .filter(p -> env.getAuthProfile().equals(p.getName()))
                 .findFirst().orElse(null);
+    }
+
+    /** {{var}} placeholders (this tool's syntax) → ${var} (JMeter's syntax). */
+    private static String vars(String s) {
+        if (s == null) return null;
+        return s.replaceAll("\\{\\{([A-Za-z0-9_]+)\\}\\}", "\\${$1}");
+    }
+
+    /**
+     * extractVariables → JMeter JSON Extractor (JSONPostProcessor) attached to
+     * the sampler, so ${var} chaining works when the plan runs in JMeter.
+     */
+    private void buildJsonExtractor(Xml x, TestRequest tc) {
+        String raw = tc.getExtractVariables();
+        if (raw == null || raw.isBlank()) return;
+        List<String> names = new ArrayList<>();
+        List<String> paths = new ArrayList<>();
+        for (String line : raw.split("\n")) {
+            line = line.trim();
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            names.add(line.substring(0, eq).trim());
+            paths.add(line.substring(eq + 1).trim());
+        }
+        if (names.isEmpty()) return;
+        x.open("JSONPostProcessor", "guiclass", "JSONPostProcessorGui",
+               "testclass", "JSONPostProcessor", "testname", "Extract variables", "enabled", "true");
+        x.prop("stringProp", "JSONPostProcessor.referenceNames", String.join(";", names));
+        x.prop("stringProp", "JSONPostProcessor.jsonPathExprs",  String.join(";", paths));
+        x.prop("stringProp", "JSONPostProcessor.match_numbers",
+               String.join(";", java.util.Collections.nCopies(names.size(), "1")));
+        x.close("JSONPostProcessor");
+        x.open("hashTree");
+        x.close("hashTree");
     }
 
     private List<TestRequest> orderByPhase(List<TestRequest> tcs) {

@@ -102,6 +102,12 @@ public class SampleDataBuilder {
                 "{\"id\":12345,\"name\":\"John Doe\",\"email\":\"john@example.com\"}",
                 "2025-01-15 10:30:15")));
 
+        // Setup/teardown phase demo — setup runs first, teardown always runs
+        // last (even after a Stop), regardless of row position in the sheet.
+        g.addTestRequest(tc("TC000_setup", "Reset test data", "Runs before every test in this group",
+                true, HttpMethod.POST, "/api/test/reset", "qa@company.com")
+            .withPhase(Phase.SETUP));
+
         // TC002 is a multi-request test case: two requests share testCaseId
         // "TC002" — the create call extracts the new user's id, the verify call
         // consumes it via {{newUserId}}. They always execute sequentially.

@@ -95,6 +95,8 @@ public class TestRequest {
 
     // ── Fluent setters ─────────────────────────────────────────────────────────
     public TestRequest withTestCaseId(String tcId)                  { this.testCaseId = tcId;     return this; }
+    public TestRequest withPhase(Phase p)                           { this.phase = p;             return this; }
+    public TestRequest withExtractVariables(String ev)              { this.extractVariables = ev; return this; }
     public TestRequest withQueryParams(List<Param> p)               { this.queryParams = p;       return this; }
     public TestRequest withFormParams(List<Param> p)                { this.formParams = p;        return this; }
     public TestRequest withJsonBody(String b)                       { this.jsonBody = b;          return this; }

@@ -506,3 +506,40 @@ Rules:
 - Variable substitution in endpoint/body: {{variableName}}
 - Phase "setup" runs first (sequential), "test" runs in the middle, "teardown" runs last (always runs)
 ```
+
+## TestSuite file (full-suite import: JSON / XML / Excel)
+
+Group files (above) cover one `TestGroup`. A **full suite** file wraps the same
+groups with settings, environments and auth profiles — this is what
+`Import suite` accepts and what `Export` produces:
+
+```json
+{
+  "settings": {
+    "suiteName": "...", "description": "...", "version": "1.0",
+    "executionConfig": {
+      "mode": "parallel", "timeout": 30, "parallelLimit": 10,
+      "sourceEnvironment": "source", "targetEnvironment": "target"
+    },
+    "comparisonConfig": { "ignoreFieldsRaw": "timestamp,requestId", "caseSensitive": true }
+  },
+  "environments": [
+    { "name": "source", "url": "https://host/legacy/api",     "authProfile": "OAuth-Legacy", "headers": [{ "key": "Accept", "value": "application/json" }] },
+    { "name": "target", "url": "https://host/modernized/api", "authProfile": "OAuth-Modern", "headers": [] }
+  ],
+  "authProfiles": [
+    { "name": "OAuth-Legacy", "type": "client_credentials", "tokenUrl": "https://host/oauth/token", "clientId": "...", "clientSecret": "...", "scope": "legacy:read" }
+  ],
+  "testGroups": [ /* TestGroup objects exactly as documented above */ ]
+}
+```
+
+Notes:
+- XML mirrors the same structure 1:1 (Jackson-mapped) — use it for backup/restore.
+- Excel uses 3 config tabs + one `TC - <Group>` sheet per group, 29 columns:
+  GREEN definition (incl. **Test Case ID**, **Phase**, **Extract Variables**),
+  TEAL comparison override, PURPLE automation, RED results. Legacy 28-column
+  workbooks (without Test Case ID) still import.
+- Living examples: `GET /api/export/template/excel` and `GET /api/export/template/xml`
+  download a pre-filled sample demonstrating every field, including a
+  multi-request test case chained via `extractVariables` + `{{newUserId}}`.

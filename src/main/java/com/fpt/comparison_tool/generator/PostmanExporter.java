@@ -34,7 +34,8 @@ import java.util.stream.Collectors;
  *   Groups with mixed phases → sub-folders Setup / Test Cases / Teardown
  *   Groups with only TEST phase → flat list (no nesting)
  *
- * Note: extractVariables DSL is not exported (no Postman equivalent).
+ * extractVariables are exported as per-request test scripts writing to
+ * collection variables, so {{var}} chaining works inside Postman/Newman.
  */
 public class PostmanExporter {
 
@@ -344,9 +345,56 @@ public class PostmanExporter {
                 item.put("description", tc.getDescription());
             }
             item.set("request", buildRequest(tc));
+            ArrayNode ev = buildExtractEvent(tc);
+            if (ev != null) item.set("event", ev);
             items.add(item);
         }
         return items;
+    }
+
+    /**
+     * extractVariables ("name=$.json.path" per line) → Postman test script that
+     * stores values in collection variables, so later requests using {{name}}
+     * work when the exported collection runs in Postman/Newman.
+     * Simple dot / [index] paths are converted; anything fancier is emitted as
+     * a TODO comment instead of broken JS.
+     */
+    private ArrayNode buildExtractEvent(TestRequest tc) {
+        String raw = tc.getExtractVariables();
+        if (raw == null || raw.isBlank()) return null;
+
+        StringBuilder js = new StringBuilder("var d = {};\ntry { d = pm.response.json(); } catch (e) {}\n");
+        boolean any = false;
+        for (String line : raw.split("\n")) {
+            line = line.trim();
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            String name = line.substring(0, eq).trim();
+            String path = line.substring(eq + 1).trim();
+            if (path.matches("\\$(\\.[A-Za-z0-9_]+|\\[\\d+])*")) {
+                String expr = path.equals("$") ? "d" : "d" + path.substring(1);
+                js.append("try { pm.collectionVariables.set(\"").append(name)
+                  .append("\", ").append(expr).append("); } catch (e) {}\n");
+                any = true;
+            } else {
+                js.append("// TODO unsupported extract path for ").append(name)
+                  .append(": ").append(path).append("\n");
+            }
+        }
+        if (!any) return null;
+
+        ObjectNode script = mapper.createObjectNode();
+        script.put("type", "text/javascript");
+        ArrayNode exec = mapper.createArrayNode();
+        Arrays.stream(js.toString().split("\n")).forEach(exec::add);
+        script.set("exec", exec);
+
+        ObjectNode event = mapper.createObjectNode();
+        event.put("listen", "test");
+        event.set("script", script);
+        ArrayNode events = mapper.createArrayNode();
+        events.add(event);
+        return events;
     }
 
     private ObjectNode buildRequest(TestRequest tc) {
