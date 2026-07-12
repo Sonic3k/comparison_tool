@@ -87,7 +87,7 @@ public class JmeterExporter {
         if (isOauth2(auth)) buildOauth2SetupGroup(x);
 
         for (TestGroup g : nullSafe(suite.getTestGroups())) {
-            buildThreadGroup(x, g, pu, auth);
+            buildThreadGroup(x, g, pu, auth, env);
         }
 
         buildListeners(x);   // without these, a run shows and saves nothing
@@ -220,7 +220,7 @@ public class JmeterExporter {
 
     // ─── Thread Group ─────────────────────────────────────────────────────────
 
-    private void buildThreadGroup(Xml x, TestGroup group, ParsedUrl pu, AuthProfile auth) {
+    private void buildThreadGroup(Xml x, TestGroup group, ParsedUrl pu, AuthProfile auth, Environment env) {
         x.open("ThreadGroup", "guiclass", "ThreadGroupGui", "testclass", "ThreadGroup",
                "testname", group.getName(), "enabled", "true");
         x.prop("stringProp", "ThreadGroup.on_sample_error", "continue");
@@ -237,10 +237,12 @@ public class JmeterExporter {
         x.open("hashTree");
 
         buildAuthHeaderManager(x, auth);
+        buildEnvHeaderManager(x, env);
         buildHttpDefaults(x, pu);
 
+        String envCt = envContentType(env);
         for (TestRequest tc : orderByPhase(nullSafe(group.getTestRequests()))) {
-            buildHttpSampler(x, tc, pu);
+            buildHttpSampler(x, tc, pu, envCt);
         }
 
         x.close("hashTree");
@@ -268,6 +270,38 @@ public class JmeterExporter {
 
     // ─── HTTP Request Defaults ────────────────────────────────────────────────
 
+    /**
+     * Environment default headers, minus Content-Type. The engine applies these
+     * to every request; without them JMeter runs miss things like X-User-Id.
+     * Content-Type is handled per sampler (see contentTypeFor) because the
+     * engine overrides it by body type — a group-level CT would corrupt
+     * form-urlencoded samplers.
+     */
+    private void buildEnvHeaderManager(Xml x, Environment env) {
+        if (env == null || env.getHeaders() == null) return;
+        List<Param> hs = env.getHeaders().stream()
+                .filter(h -> h.getKey() != null && !h.getKey().isBlank())
+                .filter(h -> !"Content-Type".equalsIgnoreCase(h.getKey()))
+                .collect(Collectors.toList());
+        if (hs.isEmpty()) return;
+        x.open("HeaderManager", "guiclass", "HeaderPanel",
+               "testclass", "HeaderManager", "testname", "Environment Default Headers", "enabled", "true");
+        x.open("collectionProp", "name", "HeaderManager.headers");
+        for (Param h : hs) headerEntry(x, h.getKey(), vars(h.getValue()));
+        x.close("collectionProp");
+        x.close("HeaderManager");
+        x.open("hashTree"); x.close("hashTree");
+    }
+
+    private String envContentType(Environment env) {
+        if (env == null || env.getHeaders() == null) return null;
+        return env.getHeaders().stream()
+                .filter(h -> "Content-Type".equalsIgnoreCase(h.getKey()))
+                .map(Param::getValue)
+                .filter(v -> v != null && !v.isBlank())
+                .findFirst().orElse(null);
+    }
+
     private void buildHttpDefaults(Xml x, ParsedUrl pu) {
         x.open("ConfigTestElement", "guiclass", "HttpDefaultsGui",
                "testclass", "ConfigTestElement", "testname", "HTTP Request Defaults", "enabled", "true");
@@ -283,7 +317,7 @@ public class JmeterExporter {
 
     // ─── HTTP Sampler ─────────────────────────────────────────────────────────
 
-    private void buildHttpSampler(Xml x, TestRequest tc, ParsedUrl pu) {
+    private void buildHttpSampler(Xml x, TestRequest tc, ParsedUrl pu, String envCt) {
         String method  = tc.getMethod() != null ? tc.getMethod().name() : "GET";
         String path    = pu.basePath + notBlank(tc.getEndpoint(), "");
         String qs      = tc.getQueryParamsAsString();
@@ -305,7 +339,7 @@ public class JmeterExporter {
         buildBody(x, tc);
         x.close("HTTPSamplerProxy");
         x.open("hashTree");
-        buildPerRequestHeaders(x, tc);
+        buildPerRequestHeaders(x, tc, contentTypeFor(tc, envCt));
         buildJsonExtractor(x, tc);
         x.close("hashTree");
     }
@@ -360,13 +394,34 @@ public class JmeterExporter {
         x.close("elementProp");
     }
 
-    private void buildPerRequestHeaders(Xml x, TestRequest tc) {
-        if (tc.getHeaders() == null || tc.getHeaders().isBlank()) return;
-        List<String[]> parsed = new ArrayList<>();
-        for (String line : tc.getHeaders().split("\\n")) {
-            int c = line.indexOf(":");
-            if (c > 0) parsed.add(new String[]{ line.substring(0, c).trim(), line.substring(c + 1).trim() });
+    /**
+     * Content-Type exactly as the engine sends it:
+     *   JSON body  -> application/json (engine forces it)
+     *   form body  -> none here; JMeter's urlencoded handling sets it
+     *   otherwise  -> the environment's default Content-Type, if any
+     * A Content-Type in the request's own headers always wins.
+     */
+    private String contentTypeFor(TestRequest tc, String envCt) {
+        String own = tc.getHeaders();
+        if (own != null && own.lines().anyMatch(l -> l.trim().toLowerCase().startsWith("content-type:"))) {
+            return null; // explicit in request headers — emitted verbatim below
         }
+        boolean hasForm = tc.getFormParams() != null && !tc.getFormParams().isEmpty();
+        boolean hasJson = !hasForm && tc.getJsonBody() != null && !tc.getJsonBody().isBlank();
+        if (hasJson) return "application/json";
+        if (hasForm) return null;
+        return envCt;
+    }
+
+    private void buildPerRequestHeaders(Xml x, TestRequest tc, String contentType) {
+        List<String[]> parsed = new ArrayList<>();
+        if (tc.getHeaders() != null && !tc.getHeaders().isBlank()) {
+            for (String line : tc.getHeaders().split("\\n")) {
+                int c = line.indexOf(":");
+                if (c > 0) parsed.add(new String[]{ line.substring(0, c).trim(), line.substring(c + 1).trim() });
+            }
+        }
+        if (contentType != null) parsed.add(new String[]{ "Content-Type", contentType });
         if (parsed.isEmpty()) return;
         x.open("HeaderManager", "guiclass", "HeaderPanel",
                "testclass", "HeaderManager", "testname", "Request Headers", "enabled", "true");
