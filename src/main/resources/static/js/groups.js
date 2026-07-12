@@ -194,25 +194,84 @@ function modeBadge(mode) {
   return `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:${bg};color:${fg}">${label}</span>`;
 }
 
-function caseBadges(tc) {
+function caseBadges(tc, grouped) {
   let b = '';
-  if (tc.testCaseId && tc.testCaseId !== tc.id) b += `<span class="tc-mini tcid" title="Belongs to test case ${esc(tc.testCaseId)}">${esc(tc.testCaseId)}</span>`;
+  if (!grouped && tc.testCaseId && tc.testCaseId !== tc.id) b += `<span class="tc-mini tcid" title="Belongs to test case ${esc(tc.testCaseId)}">${esc(tc.testCaseId)}</span>`;
   if (tc.phase && tc.phase !== 'test') b += `<span class="tc-mini ${esc(tc.phase)}">${esc(tc.phase)}</span>`;
   if (tc.extractVariables) b += `<span class="tc-mini vars" title="Extracts: ${esc(tc.extractVariables)}">vars</span>`;
   return b;
 }
 
+function tcRollupStatus(reqs) {
+  const sts = reqs.map(r => r.result?.status || 'pending');
+  if (sts.includes('error'))  return 'error';
+  if (sts.includes('failed')) return 'failed';
+  if (sts.length && sts.every(x => x === 'passed')) return 'passed';
+  return 'pending';
+}
+
+let _tcMembers = {};   // headerKey -> [requestIds]
+let _tcOfReq   = {};   // requestId -> headerKey
+
 function renderDetailCases(grp) {
+  _tcMembers = {}; _tcOfReq = {};
+  const reqs = grp.testRequests || [];
+
+  // Chunk by testCaseId, first-appearance order (mirrors execution order)
+  const chunks = [];
+  const byId = new Map();
+  for (const r of reqs) {
+    const tcId = r.testCaseId || r.id;
+    if (!byId.has(tcId)) { const c = { tcId, reqs: [] }; byId.set(tcId, c); chunks.push(c); }
+    byId.get(tcId).reqs.push(r);
+  }
+  const defs = new Map((grp.testCaseDefs || []).map(d => [d.id, d]));
+
+  let html = '', idx = 0;
+  for (const c of chunks) {
+    if (c.reqs.length > 1) {
+      const key = 'i' + (idx++);
+      _tcMembers[key] = c.reqs.map(r => r.id);
+      c.reqs.forEach(r => { _tcOfReq[r.id] = key; });
+      const def  = defs.get(c.tcId);
+      const roll = tcRollupStatus(c.reqs);
+      html += `
+        <tr class="tc-head-row" onclick="toggleTcGroup('${key}')">
+          <td style="text-align:center;color:#93c5fd;font-size:10px" id="tcarr-${key}">▼</td>
+          <td colspan="4">
+            <span class="mono" style="font-weight:700;color:var(--blue)">${esc(c.tcId)}</span>
+            ${def && def.name && def.name !== c.tcId ? `<span style="color:#6b7280;font-size:12px;margin-left:8px">${esc(def.name)}</span>` : ''}
+            <span class="tc-mini tcid" style="margin-left:8px">${c.reqs.length} requests · sequential</span>
+          </td>
+          <td></td>
+          <td><span class="bs s-${roll}" id="tcst-${key}">${roll}</span></td>
+          <td></td>
+          <td onclick="event.stopPropagation()" style="white-space:nowrap">
+            <button class="btn btn-teal btn-xs" onclick="runTestCase('${esc(grp.name)}','${esc(c.tcId)}')"
+              title="Run this test case only — group setup & Global Setup included so {{variables}} resolve">▶ Run TC</button>
+          </td>
+        </tr>` + c.reqs.map(r => caseRowHtml(grp, r, key)).join('');
+    } else {
+      html += caseRowHtml(grp, c.reqs[0], null);
+    }
+  }
+
   document.getElementById('detailCasesTable').innerHTML =
-    (grp.testRequests || []).map(tc => {
-      const res = tc.result || {}, st = res.status || 'pending';
-      const disabled = tc.enabled === false;
-      const mode = tc.verificationMode || 'comparison';
-      return `
-        <tr class="case-row${disabled ? ' case-disabled' : ''}" id="row-${esc(tc.id)}">
+    html ||
+    '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px">No test cases yet. Click "+ Add Case".</td></tr>';
+}
+
+function caseRowHtml(grp, tc, groupKey) {
+  const res = tc.result || {}, st = res.status || 'pending';
+  const disabled = tc.enabled === false;
+  const mode = tc.verificationMode || 'comparison';
+  const memberCls = groupKey ? ` tc-member tcm-${groupKey}` : '';
+  const idPrefix  = groupKey ? '<span style="color:#93c5fd">└ </span>' : '';
+  return `
+        <tr class="case-row${disabled ? ' case-disabled' : ''}${memberCls}" id="row-${esc(tc.id)}">
           <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
-          <td class="mono" style="font-weight:600;cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.id)}</td>
-          <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc)}</td>
+          <td class="mono" style="font-weight:600;cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${idPrefix}${esc(tc.id)}</td>
+          <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
           <td class="mono" style="color:#6b7280">${esc(tc.endpoint || '')}</td>
           <td>${modeBadge(mode)}</td>
@@ -225,18 +284,26 @@ function renderDetailCases(grp) {
               ${disabled ? '○' : '●'}
             </button>
             <button class="btn btn-outline btn-xs" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')" title="Open response panel">⧉</button>
-            <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this case only">↻</button>
+            <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this request only (no setup, no variables)">↻</button>
             <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
             <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')">Edit</button>
             <button class="btn btn-outline btn-xs" style="color:var(--red);margin-left:3px" onclick="deleteCase('${esc(grp.name)}','${esc(tc.id)}')">✕</button>
           </td>
         </tr>
-        <tr class="expand-row" id="exp-${esc(tc.id)}">
+        <tr class="expand-row${memberCls}" id="exp-${esc(tc.id)}">
           <td colspan="9" class="expand-cell">${renderExpand(tc)}</td>
         </tr>`;
-    }).join('') ||
-    '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px">No test cases yet. Click "+ Add Case".</td></tr>';
 }
+
+function toggleTcGroup(key) {
+  const rows = document.querySelectorAll('.tcm-' + key);
+  if (!rows.length) return;
+  const collapse = rows[0].style.display !== 'none';
+  rows.forEach(r => { r.style.display = collapse ? 'none' : ''; });
+  const arr = document.getElementById('tcarr-' + key);
+  if (arr) arr.textContent = collapse ? '▶' : '▼';
+}
+
 
 function renderExpand(tc) {
   const res = tc.result || {};
@@ -496,6 +563,14 @@ function applyLiveRowUpdates(p) {
     const el = document.getElementById('st-' + k.slice(i + 2));
     if (el && el.textContent !== 'running') { el.textContent = 'running'; el.className = 'bs s-running'; }
   }
+  const touched = new Set();
+  for (const k of (p.active || [])) {
+    const i = k.indexOf('::');
+    if (i >= 0 && k.slice(0, i) === currentGroup) {
+      const key = _tcOfReq[k.slice(i + 2)];
+      if (key) touched.add(key);
+    }
+  }
   for (const e of (p.recent || [])) {
     const sig = e.group + '::' + e.requestId + '@' + e.at;
     if (_seenRecent.has(sig)) continue;
@@ -503,11 +578,39 @@ function applyLiveRowUpdates(p) {
     if (e.group !== currentGroup) continue;
     const el = document.getElementById('st-' + e.requestId);
     if (el) { el.textContent = e.status; el.className = 'bs s-' + e.status; }
+    if (_tcOfReq[e.requestId]) touched.add(_tcOfReq[e.requestId]);
   }
+  for (const key of touched) refreshTcHeader(key);
 }
 
-async function startExec(groups, label) {
-  const res = await api('POST', '/execute', { groups });
+/** Recompute a TC header rollup from the live badge states of its members. */
+function refreshTcHeader(key) {
+  const el = document.getElementById('tcst-' + key);
+  if (!el) return;
+  const sts = (_tcMembers[key] || []).map(id => document.getElementById('st-' + id)?.textContent || 'pending');
+  let roll = 'pending';
+  if (sts.includes('running'))      roll = 'running';
+  else if (sts.includes('error'))   roll = 'error';
+  else if (sts.includes('failed'))  roll = 'failed';
+  else if (sts.length && sts.every(x => x === 'passed')) roll = 'passed';
+  el.textContent = roll;
+  el.className = 'bs s-' + roll;
+}
+
+async function startExec(groups, label) { await startExecBody({ groups }, label); }
+
+/** Run ONE logical test case — its member requests run sequentially; group
+ *  setup/teardown and Global Setup are included so {{variables}} resolve. */
+async function runTestCase(groupName, tcId) {
+  await startExecBody({
+    scope: 'testcases',
+    includeSetup: true,
+    testCases: [{ groupName, testCaseId: tcId }]
+  }, `Test case "${tcId}"`);
+}
+
+async function startExecBody(body, label) {
+  const res = await api('POST', '/execute', body);
   if (!res.success) { toast(res.message, true); return; }
   _execLabel = label || 'All groups';
   const t = document.getElementById('progressTitle');
@@ -624,12 +727,6 @@ function renderResultsPanel() {
     }
   }
 
-  // Debug — remove after fix
-  console.log('[Results] groups:', groups.length, 'total:', total, 'pass:', passed, 'fail:', failed, 'err:', error);
-  if (groups[0]?.testRequests?.[0]) {
-    const tc0 = groups[0].testRequests[0];
-    console.log('[Results] sample TC:', tc0.id, 'result:', JSON.stringify(tc0.result));
-  }
   const executed = passed + failed + error;
   const pending  = total - executed;
   const passRate = total > 0 ? Math.round(passed / total * 100) : 0;

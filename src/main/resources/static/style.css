@@ -259,3 +259,8 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 /* ─── Progress visibility fixes ──────────────────────────────── */
 #progressBox { position: sticky; top: 0; z-index: 60; }
 .s-running { background: #dbeafe; color: #1d4ed8; }
+
+/* ─── Test-case group rows in detail table ───────────────────── */
+.tc-head-row td { background: #eff6ff; border-top: 2px solid #bfdbfe; cursor: pointer; padding-top: 7px; padding-bottom: 7px; }
+.tc-head-row:hover td { background: #e0edff; }
+.tc-member td:first-child { border-left: 3px solid #bfdbfe; }
