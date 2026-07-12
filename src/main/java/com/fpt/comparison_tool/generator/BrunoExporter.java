@@ -100,7 +100,8 @@ public class BrunoExporter {
             for (TestRequest tc : nullSafe(group.getTestRequests())) {
                 if (!tc.isEnabled()) continue;
                 addPath(paths, schemas, requestBodies, securitySchemes,
-                        tc, group, baseUrl, authType, usedOpIds);
+                        tc, group, baseUrl, authType, usedOpIds,
+                        env != null ? env.getHeaders() : null);
             }
         }
 
@@ -115,7 +116,8 @@ public class BrunoExporter {
 
     private void addPath(ObjectNode paths, ObjectNode schemas, ObjectNode requestBodies,
                          ObjectNode securitySchemes, TestRequest tc, TestGroup group,
-                         String baseUrl, AuthType authType, Set<String> usedOpIds) {
+                         String baseUrl, AuthType authType, Set<String> usedOpIds,
+                         List<Param> envHeaders) {
         String endpoint = tc.getEndpoint() != null ? tc.getEndpoint() : "/";
         if (!endpoint.startsWith("/")) endpoint = "/" + endpoint;
 
@@ -146,7 +148,8 @@ public class BrunoExporter {
                 if (p.getValue() != null) param.put("example", p.getValue());
             }
         }
-        // TC-level header overrides
+        // TC-level header overrides (always win over environment defaults)
+        java.util.Set<String> hdrSeen = new java.util.HashSet<>();
         if (tc.getHeaders() != null && !tc.getHeaders().isBlank()) {
             for (String line : tc.getHeaders().split("\\r?\\n")) {
                 int idx = line.indexOf(':');
@@ -154,12 +157,29 @@ public class BrunoExporter {
                 String name = line.substring(0, idx).trim();
                 String value = line.substring(idx + 1).trim();
                 if (name.isEmpty() || name.equalsIgnoreCase("Authorization")) continue;
+                hdrSeen.add(name.toLowerCase());
                 ObjectNode param = params.addObject();
                 param.put("name", name);
                 param.put("in", "header");
                 param.put("required", true);
                 param.putObject("schema").put("type", "string");
                 param.put("example", value);
+            }
+        }
+        // Environment default headers — the engine sends these on every request.
+        // Content-Type is excluded: the requestBody media type declares it.
+        if (envHeaders != null) {
+            for (Param h : envHeaders) {
+                String name = h.getKey();
+                if (name == null || name.isBlank()) continue;
+                if (name.equalsIgnoreCase("Authorization") || name.equalsIgnoreCase("Content-Type")) continue;
+                if (!hdrSeen.add(name.toLowerCase())) continue;
+                ObjectNode param = params.addObject();
+                param.put("name", name);
+                param.put("in", "header");
+                param.put("required", true);
+                param.putObject("schema").put("type", "string");
+                if (h.getValue() != null) param.put("example", h.getValue());
             }
         }
         if (params.size() == 0) operation.remove("parameters");

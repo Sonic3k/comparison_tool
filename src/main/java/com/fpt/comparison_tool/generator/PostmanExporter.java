@@ -60,7 +60,8 @@ public class PostmanExporter {
         AuthProfile auth = resolveAuth(profiles, env);
 
         return buildCollection(suite, dominantAuthType(auth), isOauth2(auth),
-                               buildSingleModeVariables(env, auth));
+                               buildSingleModeVariables(env, auth),
+                               env != null ? env.getHeaders() : null);
     }
 
     /**
@@ -79,7 +80,8 @@ public class PostmanExporter {
         boolean needsOauth2 = isOauth2(sourceAuth) || isOauth2(targetAuth);
 
         byte[] collection = buildCollection(suite, dominantAuthType(sourceAuth), needsOauth2,
-                                            buildBothModeBaseVariable());
+                                            buildBothModeBaseVariable(),
+                                            unionEnvHeaders(sourceEnv, targetEnv));
         byte[] sourceFile = buildEnvironmentFile("Source", sourceEnv, sourceAuth);
         byte[] targetFile = buildEnvironmentFile("Target", targetEnv, targetAuth);
 
@@ -89,14 +91,15 @@ public class PostmanExporter {
     // ─── Collection ───────────────────────────────────────────────────────────
 
     private byte[] buildCollection(TestSuite suite, AuthType authType,
-                                   boolean needsOauth2, ArrayNode collectionVariables)
+                                   boolean needsOauth2, ArrayNode collectionVariables,
+                                   List<Param> envHeaders)
             throws Exception {
         ObjectNode root = mapper.createObjectNode();
         root.set("info",     buildInfo(suite));
         root.set("auth",     buildAuth(authType));
         if (needsOauth2) root.set("event", buildOauth2PreRequestEvent());
         root.set("variable", collectionVariables);
-        root.set("item",     buildFolders(nullSafe(suite.getTestGroups())));
+        root.set("item",     buildFolders(nullSafe(suite.getTestGroups()), envHeaders));
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
     }
 
@@ -115,6 +118,12 @@ public class PostmanExporter {
         ArrayNode vars = mapper.createArrayNode();
         vars.add(collectionVar("baseUrl", env != null && env.getUrl() != null ? env.getUrl() : ""));
         addAuthCollectionVars(vars, auth);
+        if (env != null) {
+            for (Param h : nullSafe(env.getHeaders())) {
+                if (h.getKey() == null || h.getKey().isBlank()) continue;
+                vars.add(collectionVar(headerVar(h.getKey()), h.getValue()));
+            }
+        }
         return vars;
     }
 
@@ -230,7 +239,7 @@ public class PostmanExporter {
 
         if (env != null) {
             for (Param h : nullSafe(env.getHeaders())) {
-                values.add(envEntry("header_" + h.getKey().replace("-", "_"), h.getValue()));
+                values.add(envEntry(headerVar(h.getKey()), h.getValue()));
             }
         }
 
@@ -263,7 +272,7 @@ public class PostmanExporter {
 
     // ─── Folders & Requests ───────────────────────────────────────────────────
 
-    private ArrayNode buildFolders(List<TestGroup> groups) {
+    private ArrayNode buildFolders(List<TestGroup> groups, List<Param> envHeaders) {
         ArrayNode folders = mapper.createArrayNode();
         for (TestGroup group : groups) {
             ObjectNode folder = mapper.createObjectNode();
@@ -271,32 +280,32 @@ public class PostmanExporter {
             if (group.getDescription() != null && !group.getDescription().isBlank()) {
                 folder.put("description", group.getDescription());
             }
-            folder.set("item", buildGroupItems(nullSafe(group.getTestRequests())));
+            folder.set("item", buildGroupItems(nullSafe(group.getTestRequests()), envHeaders));
             folders.add(folder);
         }
         return folders;
     }
 
-    private ArrayNode buildGroupItems(List<TestRequest> testRequests) {
+    private ArrayNode buildGroupItems(List<TestRequest> testRequests, List<Param> envHeaders) {
         boolean hasMultiplePhases = testRequests.stream()
                 .map(tc -> tc.getPhase() != null ? tc.getPhase() : Phase.TEST)
                 .collect(Collectors.toSet())
                 .size() > 1;
 
-        if (!hasMultiplePhases) return buildTestItems(testRequests);
+        if (!hasMultiplePhases) return buildTestItems(testRequests, envHeaders);
 
         ArrayNode items = mapper.createArrayNode();
         List<TestRequest> setup    = byPhase(testRequests, Phase.SETUP);
         List<TestRequest> test     = byPhase(testRequests, Phase.TEST);
         List<TestRequest> teardown = byPhase(testRequests, Phase.TEARDOWN);
-        if (!setup.isEmpty())    items.add(subFolder("Setup",      setup));
+        if (!setup.isEmpty())    items.add(subFolder("Setup",      setup,    envHeaders));
         if (!test.isEmpty()) {
             ObjectNode testFolder = mapper.createObjectNode();
             testFolder.put("name", "Test Cases");
-            testFolder.set("item", buildTestItems(test));
+            testFolder.set("item", buildTestItems(test, envHeaders));
             items.add(testFolder);
         }
-        if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown));
+        if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown, envHeaders));
         return items;
     }
 
@@ -305,7 +314,7 @@ public class PostmanExporter {
      * requests becomes a sub-folder (requests kept in declared order); a
      * 1-request test case stays a flat item — avoids one folder per request.
      */
-    private ArrayNode buildTestItems(List<TestRequest> testRequests) {
+    private ArrayNode buildTestItems(List<TestRequest> testRequests, List<Param> envHeaders) {
         Map<String, List<TestRequest>> byTc = new LinkedHashMap<>();
         for (TestRequest tc : testRequests) {
             String tcId = tc.getTestCaseId() != null && !tc.getTestCaseId().isBlank()
@@ -315,18 +324,18 @@ public class PostmanExporter {
         ArrayNode items = mapper.createArrayNode();
         for (Map.Entry<String, List<TestRequest>> e : byTc.entrySet()) {
             if (e.getValue().size() > 1) {
-                items.add(subFolder(e.getKey(), e.getValue()));
+                items.add(subFolder(e.getKey(), e.getValue(), envHeaders));
             } else {
-                items.addAll(buildRequests(e.getValue()));
+                items.addAll(buildRequests(e.getValue(), envHeaders));
             }
         }
         return items;
     }
 
-    private ObjectNode subFolder(String name, List<TestRequest> testRequests) {
+    private ObjectNode subFolder(String name, List<TestRequest> testRequests, List<Param> envHeaders) {
         ObjectNode folder = mapper.createObjectNode();
         folder.put("name", name);
-        folder.set("item", buildRequests(testRequests));
+        folder.set("item", buildRequests(testRequests, envHeaders));
         return folder;
     }
 
@@ -336,7 +345,7 @@ public class PostmanExporter {
                 .collect(Collectors.toList());
     }
 
-    private ArrayNode buildRequests(List<TestRequest> testRequests) {
+    private ArrayNode buildRequests(List<TestRequest> testRequests, List<Param> envHeaders) {
         ArrayNode items = mapper.createArrayNode();
         for (TestRequest tc : testRequests) {
             ObjectNode item = mapper.createObjectNode();
@@ -344,7 +353,7 @@ public class PostmanExporter {
             if (tc.getDescription() != null && !tc.getDescription().isBlank()) {
                 item.put("description", tc.getDescription());
             }
-            item.set("request", buildRequest(tc));
+            item.set("request", buildRequest(tc, envHeaders));
             ArrayNode ev = buildExtractEvent(tc);
             if (ev != null) item.set("event", ev);
             items.add(item);
@@ -397,11 +406,11 @@ public class PostmanExporter {
         return events;
     }
 
-    private ObjectNode buildRequest(TestRequest tc) {
+    private ObjectNode buildRequest(TestRequest tc, List<Param> envHeaders) {
         ObjectNode request = mapper.createObjectNode();
         request.put("method", tc.getMethod() != null ? tc.getMethod().name() : "GET");
         request.set("url",    buildUrl(tc));
-        request.set("header", buildHeaders(tc.getHeaders()));
+        request.set("header", buildHeaders(tc, envHeaders));
         ObjectNode body = buildBody(tc);
         if (body != null) request.set("body", body);
         return request;
@@ -439,18 +448,64 @@ public class PostmanExporter {
         return url;
     }
 
-    private ArrayNode buildHeaders(String rawHeaders) {
+    /**
+     * Request headers = the request's own headers (always win) + the
+     * environment default headers the engine applies to every call, referenced
+     * as {{header_*}} variables so one collection works for both environments.
+     * Content-Type follows the engine's rule: a body drives it (Postman sets
+     * application/json / urlencoded from the body mode), otherwise the env CT
+     * applies; an explicit CT in the request's own headers always wins.
+     */
+    private ArrayNode buildHeaders(TestRequest tc, List<Param> envHeaders) {
         ArrayNode headers = mapper.createArrayNode();
-        if (rawHeaders == null || rawHeaders.isBlank()) return headers;
-        for (String line : rawHeaders.split("\\n")) {
-            int colon = line.indexOf(":");
-            if (colon <= 0) continue;
+        Set<String> seen = new HashSet<>();
+
+        String rawHeaders = tc.getHeaders();
+        if (rawHeaders != null && !rawHeaders.isBlank()) {
+            for (String line : rawHeaders.split("\\n")) {
+                int colon = line.indexOf(":");
+                if (colon <= 0) continue;
+                String key = line.substring(0, colon).trim();
+                ObjectNode h = mapper.createObjectNode();
+                h.put("key",   key);
+                h.put("value", line.substring(colon + 1).trim());
+                headers.add(h);
+                seen.add(key.toLowerCase());
+            }
+        }
+
+        boolean hasBody = (tc.getFormParams() != null && !tc.getFormParams().isEmpty())
+                       || (tc.getJsonBody() != null && !tc.getJsonBody().isBlank());
+        for (Param p : nullSafe(envHeaders)) {
+            String key = p.getKey();
+            if (key == null || key.isBlank()) continue;
+            if (!seen.add(key.toLowerCase())) continue;                       // request override wins
+            if ("authorization".equalsIgnoreCase(key)) continue;              // collection auth handles it
+            if ("content-type".equalsIgnoreCase(key) && hasBody) continue;    // body mode drives CT
             ObjectNode h = mapper.createObjectNode();
-            h.put("key",   line.substring(0, colon).trim());
-            h.put("value", line.substring(colon + 1).trim());
+            h.put("key",   key);
+            h.put("value", "{{" + headerVar(key) + "}}");
             headers.add(h);
         }
         return headers;
+    }
+
+    private static String headerVar(String key) {
+        return "header_" + key.replace("-", "_");
+    }
+
+    /** Header keys used by either environment, first-seen order, deduped. */
+    private List<Param> unionEnvHeaders(Environment a, Environment b) {
+        List<Param> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Environment e : Arrays.asList(a, b)) {
+            if (e == null) continue;
+            for (Param h : nullSafe(e.getHeaders())) {
+                if (h.getKey() == null || h.getKey().isBlank()) continue;
+                if (seen.add(h.getKey().toLowerCase())) out.add(h);
+            }
+        }
+        return out;
     }
 
     private ObjectNode buildBody(TestRequest tc) {
