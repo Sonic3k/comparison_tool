@@ -233,3 +233,25 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
   margin: 0;
   line-height: 1.5;
 }
+
+/* ─── Case Drawer (response panel) ───────────────────────────── */
+.drawer { position: fixed; top: 52px; right: 0; bottom: 0; width: 660px; max-width: 94vw; background: #fff; border-left: 1px solid var(--gray-border); box-shadow: -8px 0 24px rgba(0,0,0,.12); z-index: 150; display: none; flex-direction: column; }
+.drawer.open { display: flex; }
+.drawer-header { display: flex; align-items: center; gap: 10px; padding: 13px 18px 11px; border-bottom: 1px solid var(--gray-border); }
+.drawer-title { font-weight: 600; font-size: 14px; font-family: 'Consolas', monospace; }
+.drawer-close { margin-left: auto; background: none; border: none; font-size: 20px; color: #9ca3af; cursor: pointer; line-height: 1; }
+.drawer-close:hover { color: var(--gray); }
+.drawer-sub { font-size: 12px; color: #6b7280; padding: 8px 18px; border-bottom: 1px solid var(--gray-border); background: var(--gray-light); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 14px 18px 20px; }
+.drawer-pre { font-family: 'Consolas', monospace; font-size: 12px; background: #1e293b; color: #e2e8f0; padding: 10px 12px; border-radius: 6px; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all; position: relative; }
+.drawer-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.copy-mini { position: absolute; top: 6px; right: 6px; font-size: 11px; padding: 2px 8px; background: #334155; border: 1px solid #475569; border-radius: 4px; color: #cbd5e1; cursor: pointer; }
+.copy-mini:hover { background: #475569; }
+.req-line { font-family: 'Consolas', monospace; font-size: 12px; background: var(--gray-light); border: 1px solid var(--gray-border); border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; word-break: break-all; }
+
+/* ─── Test-case / phase mini badges ──────────────────────────── */
+.tc-mini { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; margin-left: 6px; white-space: nowrap; }
+.tc-mini.tcid     { background: var(--blue-light); color: var(--blue); }
+.tc-mini.setup    { background: #fef3c7; color: #92400e; }
+.tc-mini.teardown { background: var(--teal-light); color: var(--teal); }
+.tc-mini.vars     { background: #f3e8ff; color: #7c3aed; }

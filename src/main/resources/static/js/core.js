@@ -27,6 +27,20 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function prettyJson(raw) {
+  if (raw == null || raw === '') return '';
+  try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return String(raw); }
+}
+
+function fmtDur(ms) {
+  if (ms == null || ms < 0) return '';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+
 function toast(msg, isErr = false) {
   const el = document.createElement('div');
   el.className = 'toast ' + (isErr ? 'toast-err' : 'toast-ok');
@@ -227,8 +241,26 @@ document.addEventListener('DOMContentLoaded', () => {
     suite = res.data;
     renderSuite();
     showSuiteView();
+
+    // Resume live progress if an execution is still running (e.g. after reload)
+    try {
+      const pr = await api('GET', '/execute/progress');
+      if (pr.success && pr.data && (pr.data.state === 'running' || pr.data.state === 'stopping')) {
+        document.getElementById('progressBox').style.display = '';
+        startPolling();
+      }
+    } catch (e) { /* ignore */ }
   }
 })();
+
+// Esc: close the topmost open modal first, otherwise the response drawer
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const ov = document.querySelector('.overlay.open');
+  if (ov) { ov.classList.remove('open'); return; }
+  const dr = document.getElementById('caseDrawer');
+  if (dr && dr.classList.contains('open') && typeof closeCaseDrawer === 'function') closeCaseDrawer();
+});
 
 // ─── Generic Export Modal (Postman + JMeter) ──────────────────────────────────
 

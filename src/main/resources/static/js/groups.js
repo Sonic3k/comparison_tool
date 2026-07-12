@@ -194,6 +194,14 @@ function modeBadge(mode) {
   return `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:${bg};color:${fg}">${label}</span>`;
 }
 
+function caseBadges(tc) {
+  let b = '';
+  if (tc.testCaseId && tc.testCaseId !== tc.id) b += `<span class="tc-mini tcid" title="Belongs to test case ${esc(tc.testCaseId)}">${esc(tc.testCaseId)}</span>`;
+  if (tc.phase && tc.phase !== 'test') b += `<span class="tc-mini ${esc(tc.phase)}">${esc(tc.phase)}</span>`;
+  if (tc.extractVariables) b += `<span class="tc-mini vars" title="Extracts: ${esc(tc.extractVariables)}">vars</span>`;
+  return b;
+}
+
 function renderDetailCases(grp) {
   document.getElementById('detailCasesTable').innerHTML =
     (grp.testRequests || []).map(tc => {
@@ -204,7 +212,7 @@ function renderDetailCases(grp) {
         <tr class="case-row${disabled ? ' case-disabled' : ''}" id="row-${esc(tc.id)}">
           <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
           <td class="mono" style="font-weight:600;cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.id)}</td>
-          <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}</td>
+          <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
           <td class="mono" style="color:#6b7280">${esc(tc.endpoint || '')}</td>
           <td>${modeBadge(mode)}</td>
@@ -216,6 +224,7 @@ function renderDetailCases(grp) {
               title="${disabled ? 'Enable' : 'Disable'}">
               ${disabled ? '○' : '●'}
             </button>
+            <button class="btn btn-outline btn-xs" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')" title="Open response panel">⧉</button>
             <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this case only">↻</button>
             <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
             <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')">Edit</button>
@@ -315,6 +324,9 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-desc', tc.description);  sv('tc-method', tc.method);
     sv('tc-enabled', String(tc.enabled !== false));
     sv('tc-verificationMode', tc.verificationMode || 'comparison');
+    sv('tc-testCaseId', tc.testCaseId && tc.testCaseId !== tc.id ? tc.testCaseId : '');
+    sv('tc-phase', tc.phase || 'test');
+    sv('tc-extract', tc.extractVariables || '');
     sv('tc-endpoint', tc.endpoint); sv('tc-author', tc.author);
     sv('tc-body', tc.jsonBody);     sv('tc-headers', tc.headers);
     sv('tc-query', (tc.queryParams || []).map(p => p.key + '=' + p.value).join('\n'));
@@ -333,8 +345,9 @@ function showCaseModal(groupName, tc = null) {
   } else {
     ['tc-id','tc-name','tc-desc','tc-endpoint','tc-author','tc-body',
      'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance',
-     'tc-expStatus','tc-expBody','tc-expHeaders','tc-maxRt'].forEach(id => sv(id, ''));
+     'tc-expStatus','tc-expBody','tc-expHeaders','tc-maxRt','tc-testCaseId','tc-extract'].forEach(id => sv(id, ''));
     sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-verificationMode', 'comparison');
+    sv('tc-phase', 'test');
     sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
   }
   updateModeUI();
@@ -373,6 +386,8 @@ async function saveTestCase() {
   const tc = {
     id: g('tc-id'), name: g('tc-name'), description: g('tc-desc'),
     enabled: g('tc-enabled') === 'true', verificationMode: mode, method: g('tc-method'),
+    testCaseId: g('tc-testCaseId') || null, phase: g('tc-phase') || 'test',
+    extractVariables: g('tc-extract'),
     endpoint: g('tc-endpoint'), author: g('tc-author'),
     jsonBody: g('tc-body'), headers: g('tc-headers'),
     queryParams: parseLines(g('tc-query')),
@@ -424,8 +439,8 @@ async function deleteCase(groupName, caseId) {
 }
 
 // ─── Execution ────────────────────────────────────────────────────────────────
-async function runAll()       { await startExec([]); }
-async function runGroup(name) { await startExec([name]); }
+async function runAll()       { await startExec([], 'All groups'); }
+async function runGroup(name) { await startExec([name], `Group "${name}"`); }
 
 // ─── Re-run a single case ─────────────────────────────────────────────────────
 async function rerunCase(groupName, caseId, btnEl) {
@@ -469,11 +484,27 @@ function copyCurl(which) {
   );
 }
 
-async function startExec(groups) {
+let _execLabel = '';
+
+async function startExec(groups, label) {
   const res = await api('POST', '/execute', { groups });
   if (!res.success) { toast(res.message, true); return; }
+  _execLabel = label || 'All groups';
+  const t = document.getElementById('progressTitle');
+  if (t) t.textContent = '⚡ Executing…';
+  const sb = document.getElementById('btnStopExec');
+  if (sb) sb.disabled = false;
+  document.getElementById('progressCounts').innerHTML = '';
+  document.getElementById('progressDetail').textContent = '';
+  document.getElementById('progressBar').style.width = '0%';
   document.getElementById('progressBox').style.display = '';
   startPolling();
+}
+
+async function stopExec() {
+  const res = await api('POST', '/execute/stop');
+  if (!res.success) { toast(res.message, true); return; }
+  toast('Stopping — in-flight requests will finish, teardown still runs');
 }
 
 function startPolling() { stopPolling(); pollTimer = setInterval(pollProgress, 1000); }
@@ -483,26 +514,66 @@ async function pollProgress() {
   const res = await api('GET', '/execute/progress');
   if (!res.success) return;
   const p = res.data;
-  document.getElementById('progressLabel').textContent = `${p.done} / ${p.total}`;
-  document.getElementById('progressBar').style.width   = p.percent + '%';
-  document.getElementById('progressDetail').textContent =
-    p.currentGroup ? `[${p.currentGroup}] ${p.currentCase}` : '';
 
-  if (p.completed) {
-    stopPolling();
-    document.getElementById('progressBox').style.display = 'none';
-    const sr = await api('GET', '/suite');
-    if (sr.success) {
-      suite = sr.data;
-      renderGroupGrid(suite.testGroups);
-      if (currentGroup) {
-        const grp = suite.testGroups.find(g => g.name === currentGroup);
-        if (grp) { renderDetailCases(grp); renderDetailStats(grp); }
-      }
-      renderResultsPanel();
-      showPanel('results');
-    }
+  document.getElementById('progressLabel').textContent = `${p.done} / ${p.total}`;
+  document.getElementById('progressBar').style.width   = (p.percent || 0) + '%';
+  document.getElementById('progressCounts').innerHTML =
+    `<span style="color:#059669;font-weight:600">${p.passed || 0} ✓</span>` +
+    `<span style="color:#dc2626;font-weight:600;margin-left:8px">${p.failed || 0} ✗</span>` +
+    (p.errorCount ? `<span style="color:#d97706;font-weight:600;margin-left:8px">${p.errorCount} !</span>` : '');
+
+  const stopping = p.state === 'stopping';
+  const t = document.getElementById('progressTitle');
+  if (t) t.textContent = stopping ? '⏳ Stopping…' : '⚡ Executing…';
+  const sb = document.getElementById('btnStopExec');
+  if (sb) sb.disabled = stopping;
+
+  // Show exactly what is running right now (backend reports live keys)
+  const act = p.active || [];
+  document.getElementById('progressDetail').textContent =
+    act.length ? '▶ Running: ' + act.map(k => (k.split('::')[1] || k)).join(' · ')
+               : (stopping ? 'Finishing in-flight requests…'
+                           : (p.currentGroup ? `[${p.currentGroup}] ${p.currentCase || ''}` : ''));
+
+  if (p.state === 'done' || p.state === 'stopped' || p.state === 'aborted') {
+    await finishExec(p);
   }
+}
+
+async function finishExec(p) {
+  stopPolling();
+  document.getElementById('progressBox').style.display = 'none';
+
+  const sr = await api('GET', '/suite');
+  if (sr.success) {
+    suite = sr.data;
+    renderGroupGrid(suite.testGroups);
+    if (currentGroup) {
+      const grp = suite.testGroups.find(g => g.name === currentGroup);
+      if (grp) { renderDetailCases(grp); renderDetailStats(grp); }
+    }
+    renderResultsPanel();
+    refreshCaseDrawer();
+  }
+  // Stay where you are — summary modal offers Results as an option
+  openExecDoneModal(p);
+}
+
+function openExecDoneModal(p) {
+  const state = p.state || (p.stopped ? 'stopped' : (p.error ? 'aborted' : 'done'));
+  const titles = { done: '✅ Execution finished', stopped: '⏹ Execution stopped', aborted: '❌ Execution aborted' };
+  document.getElementById('edTitle').textContent  = titles[state] || titles.done;
+  document.getElementById('edScope').textContent  = 'Scope: ' + (_execLabel || 'All groups');
+  document.getElementById('ed-total').textContent = p.total || 0;
+  document.getElementById('ed-pass').textContent  = p.passed || 0;
+  document.getElementById('ed-fail').textContent  = p.failed || 0;
+  document.getElementById('ed-error').textContent = p.errorCount || 0;
+  const bits = [];
+  if (p.elapsedMs != null) bits.push('Duration: ' + fmtDur(p.elapsedMs));
+  if (state === 'stopped') bits.push('Remaining requests were skipped — teardown still ran.');
+  if (state === 'aborted' && p.error) bits.push('Error: ' + p.error);
+  document.getElementById('edMeta').textContent = bits.join('  ·  ');
+  openModal('execDoneModal');
 }
 
 // ─── Group XML Export ─────────────────────────────────────────────────────────
@@ -596,7 +667,7 @@ function renderResultsPanel() {
           const st = tc.result?.status;
           const diffs = (tc.result?.differences || '').split('\n').filter(Boolean);
           return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:${st==='error'?'#fff7ed':'#fef2f2'};cursor:pointer"
-                      onclick="openGroupDetail('${esc(grp.name)}')">
+                      onclick="openGroupDetail('${esc(grp.name)}');openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">
             <span class="bs s-${st}" style="flex-shrink:0">${st}</span>
             <div>
               <span style="font-weight:600;font-size:12px">${esc(tc.id)}</span>
@@ -659,3 +730,113 @@ async function importGroupFile(format) {
 
 // Backward-compat alias
 function importGroupXml() { importGroupFile('xml'); }
+
+// ─── Case Response Drawer ─────────────────────────────────────────────────────
+let drawerCase = null; // { group, id }
+
+function openCaseDrawer(groupName, caseId) {
+  drawerCase = { group: groupName, id: caseId };
+  renderCaseDrawer();
+  document.getElementById('caseDrawer').classList.add('open');
+}
+
+function closeCaseDrawer() {
+  drawerCase = null;
+  document.getElementById('caseDrawer').classList.remove('open');
+}
+
+function refreshCaseDrawer() { if (drawerCase) renderCaseDrawer(); }
+
+function drawerPre(text) {
+  return `<div class="drawer-pre">${esc(text)}<button class="copy-mini" onclick="copyDrawer(this)">Copy</button></div>`;
+}
+
+function renderCaseDrawer() {
+  if (!drawerCase) return;
+  const grp = suite?.testGroups?.find(g => g.name === drawerCase.group);
+  const tc  = grp?.testRequests?.find(c => c.id === drawerCase.id);
+  if (!tc) { closeCaseDrawer(); return; }
+
+  const res = tc.result || {};
+  const st  = res.status || 'pending';
+  const stEl = document.getElementById('drawerStatus');
+  stEl.textContent = st;
+  stEl.className   = 'bs s-' + st;
+  document.getElementById('drawerCaseId').textContent = tc.id;
+  document.getElementById('drawerRerunBtn').onclick = () => drawerRerun();
+  document.getElementById('drawerCurlBtn').onclick  = () => showCurl(drawerCase.group, drawerCase.id);
+
+  const sub = [esc(drawerCase.group)];
+  if (tc.testCaseId && tc.testCaseId !== tc.id) sub.push('Test case <b>' + esc(tc.testCaseId) + '</b>');
+  if (tc.phase && tc.phase !== 'test') sub.push(esc(tc.phase));
+  if (tc.name) sub.push(esc(tc.name));
+  document.getElementById('drawerSub').innerHTML = sub.join(' · ');
+
+  const mode    = res.modeRun || tc.verificationMode || 'comparison';
+  const hasCmp  = mode === 'comparison' || mode === 'both';
+  const hasAuto = mode === 'automation' || mode === 'both';
+
+  let html = '';
+
+  const q = (tc.queryParams || []).map(p2 => p2.key + '=' + p2.value).join('&');
+  html += `<div class="req-line"><b>${esc(tc.method || 'GET')}</b> ${esc(tc.endpoint || '')}${q ? '?' + esc(q) : ''}</div>`;
+  if (tc.jsonBody) {
+    html += `<div class="expand-label">Request Body</div>` + drawerPre(prettyJson(tc.jsonBody));
+  }
+
+  if (!res.executedAt && !res.sourceStatus && !res.targetStatus) {
+    html += `<div style="color:#9ca3af;font-size:13px;padding:16px 0">Not executed yet — run the group or hit ↻ Re-run.</div>`;
+  } else {
+    if (hasCmp) {
+      const diffs = (res.comparisonResult || '').split('\n').filter(Boolean);
+      html += `<div class="expand-label" style="color:#0369a1;margin-top:10px">⇄ Comparison Result</div>`;
+      html += diffs.length
+        ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>`
+        : `<div style="color:#059669;font-size:12px;margin-bottom:10px">✓ No differences</div>`;
+      html += `<div class="drawer-2col" style="margin-bottom:14px">
+        <div>
+          <div class="expand-label">Source Response (${esc(res.sourceStatus || '—')})</div>
+          ${drawerPre(prettyJson(res.sourceResponse) || '—')}
+        </div>
+        <div>
+          <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
+          ${drawerPre(prettyJson(res.targetResponse) || '—')}
+        </div>
+      </div>`;
+    }
+    if (hasAuto) {
+      const lines = (res.assertionResult || '').split('\n').filter(Boolean);
+      html += `<div class="expand-label" style="color:#7c3aed;margin-top:4px">✓ Assertion Result · tgt ${esc(res.targetStatus || '—')}</div>`;
+      html += lines.length
+        ? `<div style="font-size:12px;font-family:Consolas,monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre-wrap">${lines.map(l => `<span style="color:${l.startsWith('✗') ? '#dc2626' : '#059669'}">${esc(l)}</span>`).join('\n')}</div>`
+        : `<div style="color:#059669;font-size:12px;margin-bottom:12px">✓ All assertions passed</div>`;
+      if (!hasCmp && res.targetResponse) {
+        html += `<div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>` + drawerPre(prettyJson(res.targetResponse));
+      }
+    }
+    if (res.executedAt) {
+      html += `<div style="font-size:11px;color:#9ca3af;margin-top:8px">Executed: ${esc(res.executedAt)} · mode ${esc(mode)}</div>`;
+    }
+  }
+
+  document.getElementById('drawerBody').innerHTML = html;
+}
+
+function copyDrawer(btn) {
+  const clone = btn.parentElement.cloneNode(true);
+  const cp = clone.querySelector('.copy-mini');
+  if (cp) cp.remove();
+  navigator.clipboard.writeText(clone.innerText).then(
+    () => { btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy', 1200); },
+    () => toast('Copy failed', true)
+  );
+}
+
+async function drawerRerun() {
+  if (!drawerCase) return;
+  const btn = document.getElementById('drawerRerunBtn');
+  await rerunCase(drawerCase.group, drawerCase.id, btn);
+  btn.disabled = false;
+  btn.textContent = '↻ Re-run';
+  renderCaseDrawer();
+}
