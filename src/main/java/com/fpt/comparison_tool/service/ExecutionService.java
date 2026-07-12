@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,6 +32,14 @@ public class ExecutionService {
     private final ComparisonService comparisonService;
     private final AssertionService assertionService;
     private final ExecutorService executor;
+
+    /** Dedicated thread for run orchestration — keeps the request pool fully
+     *  available for test-case chunks and rules out join-starvation. */
+    private final ExecutorService orchestrator = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "exec-orchestrator");
+        t.setDaemon(true);
+        return t;
+    });
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ExecutionService(RestTemplate restTemplate,
@@ -125,7 +134,7 @@ public class ExecutionService {
             } finally {
                 if (progress.isRunning()) progress.finish();
             }
-        }, executor).exceptionally(ex -> {
+        }, orchestrator).exceptionally(ex -> {
             // Reached only if the executor refuses the task — make sure flag is cleared
             progress.abort("Executor rejected: " + ex.getMessage());
             return null;

@@ -216,7 +216,7 @@ function renderDetailCases(grp) {
           <td><span class="bs s-method">${tc.method || ''}</span></td>
           <td class="mono" style="color:#6b7280">${esc(tc.endpoint || '')}</td>
           <td>${modeBadge(mode)}</td>
-          <td><span class="bs s-${st}">${st}</span></td>
+          <td><span class="bs s-${st}" id="st-${esc(tc.id)}">${st}</span></td>
           <td class="mono">${esc(res.targetStatus || '')}</td>
           <td onclick="event.stopPropagation()" style="white-space:nowrap">
             <button class="btn btn-xs ${disabled ? 'toggle-off' : 'toggle-on'}"
@@ -485,6 +485,26 @@ function copyCurl(which) {
 }
 
 let _execLabel = '';
+let _seenRecent = new Set();
+
+/** Flip status badges of rows in the open group detail as the engine reports them. */
+function applyLiveRowUpdates(p) {
+  if (!currentGroup) return;
+  for (const k of (p.active || [])) {
+    const i = k.indexOf('::');
+    if (i < 0 || k.slice(0, i) !== currentGroup) continue;
+    const el = document.getElementById('st-' + k.slice(i + 2));
+    if (el && el.textContent !== 'running') { el.textContent = 'running'; el.className = 'bs s-running'; }
+  }
+  for (const e of (p.recent || [])) {
+    const sig = e.group + '::' + e.requestId + '@' + e.at;
+    if (_seenRecent.has(sig)) continue;
+    _seenRecent.add(sig);
+    if (e.group !== currentGroup) continue;
+    const el = document.getElementById('st-' + e.requestId);
+    if (el) { el.textContent = e.status; el.className = 'bs s-' + e.status; }
+  }
+}
 
 async function startExec(groups, label) {
   const res = await api('POST', '/execute', { groups });
@@ -497,7 +517,12 @@ async function startExec(groups, label) {
   document.getElementById('progressCounts').innerHTML = '';
   document.getElementById('progressDetail').textContent = '';
   document.getElementById('progressBar').style.width = '0%';
-  document.getElementById('progressBox').style.display = '';
+  // NOTE: must be 'block' — '' falls back to the stylesheet's display:none,
+  // which is why the progress box historically never showed up.
+  document.getElementById('progressBox').style.display = 'block';
+  _seenRecent = new Set();
+  toast('▶ Started: ' + _execLabel);
+  pollProgress();          // fill the box immediately, no 1s dead air
   startPolling();
 }
 
@@ -534,6 +559,8 @@ async function pollProgress() {
     act.length ? '▶ Running: ' + act.map(k => (k.split('::')[1] || k)).join(' · ')
                : (stopping ? 'Finishing in-flight requests…'
                            : (p.currentGroup ? `[${p.currentGroup}] ${p.currentCase || ''}` : ''));
+
+  applyLiveRowUpdates(p);
 
   if (p.state === 'done' || p.state === 'stopped' || p.state === 'aborted') {
     await finishExec(p);

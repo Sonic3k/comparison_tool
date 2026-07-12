@@ -255,3 +255,7 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .tc-mini.setup    { background: #fef3c7; color: #92400e; }
 .tc-mini.teardown { background: var(--teal-light); color: var(--teal); }
 .tc-mini.vars     { background: #f3e8ff; color: #7c3aed; }
+
+/* ─── Progress visibility fixes ──────────────────────────────── */
+#progressBox { position: sticky; top: 0; z-index: 60; }
+.s-running { background: #dbeafe; color: #1d4ed8; }

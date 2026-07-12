@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const pr = await api('GET', '/execute/progress');
       if (pr.success && pr.data && (pr.data.state === 'running' || pr.data.state === 'stopping')) {
-        document.getElementById('progressBox').style.display = '';
+        document.getElementById('progressBox').style.display = 'block';
         startPolling();
       }
     } catch (e) { /* ignore */ }
