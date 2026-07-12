@@ -2,6 +2,7 @@ package com.fpt.comparison_tool.controller;
 
 import com.fpt.comparison_tool.dto.ApiResponse;
 import com.fpt.comparison_tool.dto.ExecutionProgress;
+import com.fpt.comparison_tool.dto.ExecutionStartRequest;
 import com.fpt.comparison_tool.model.*;
 import com.fpt.comparison_tool.service.CurlBuilder;
 import com.fpt.comparison_tool.service.ExecutionService;
@@ -10,7 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -31,11 +31,22 @@ public class ExecutionController {
 
     /**
      * POST /api/execute
-     * Body: { "groups": ["User APIs", "Auth APIs"] }  — empty array = run all
+     *
+     * Body (all fields optional):
+     *   { "groups": ["User APIs"] }                                → run only these groups (legacy shape, unchanged)
+     *   { }                                                        → run everything
+     *   { "scope": "failed", "includeSetup": true }                → re-run every failed/error test case
+     *   { "scope": "testcases", "includeSetup": true,
+     *     "testCases": [ { "groupName": "User APIs",
+     *                      "testCaseId": "TC002" } ] }             → run selected test cases (all their requests, in order)
+     *
+     * includeSetup (default true) wraps scoped runs with the group's
+     * setup/teardown phases and any Global Setup/Teardown groups, so
+     * {{variables}} resolve exactly like in a full run.
      */
     @PostMapping
     public ResponseEntity<ApiResponse<Void>> startExecution(
-            @RequestBody(required = false) Map<String, List<String>> body) {
+            @RequestBody(required = false) ExecutionStartRequest body) {
         if (!session.hasSuite()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
         }
@@ -44,20 +55,39 @@ public class ExecutionController {
             return ResponseEntity.badRequest().body(ApiResponse.error("Execution already running"));
         }
         progress.reset();
-        List<String> groupFilter = body != null ? body.get("groups") : null;
-        executionService.startAsync(session.getTestSuite(), groupFilter, progress);
+        executionService.startAsync(session.getTestSuite(), body, progress);
         return ResponseEntity.ok(ApiResponse.ok("Execution started", null));
+    }
+
+    /**
+     * POST /api/execute/stop
+     *
+     * Graceful stop: requests already in flight finish, everything not yet
+     * started is skipped, teardown phases and Global Teardown groups still run.
+     */
+    @PostMapping("/stop")
+    public ResponseEntity<ApiResponse<Void>> stopExecution() {
+        ExecutionProgress progress = session.getProgress();
+        if (!progress.isRunning()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("No execution running"));
+        }
+        progress.requestStop();
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Stop requested — in-flight requests will finish, teardown will still run", null));
     }
 
     /**
      * POST /api/execute/case
      * Body: { "groupName": "User APIs", "caseId": "TC001" }
      *
-     * Re-runs a single test case synchronously and returns it with fresh result.
-     * Does not affect the suite-wide ExecutionProgress, does not run setup/teardown.
+     * Re-runs a single request synchronously and returns it with fresh result.
+     * Does not affect the suite-wide ExecutionProgress, does not run
+     * setup/teardown and has no extracted variables — {{placeholders}} stay
+     * literal. Kept for the legacy UI; prefer scope=testcases for anything
+     * that depends on setup or variables.
      */
     @PostMapping("/case")
-    public ResponseEntity<ApiResponse<TestCase>> runSingleCase(
+    public ResponseEntity<ApiResponse<TestRequest>> runSingleCase(
             @RequestBody Map<String, String> body) {
         if (!session.hasSuite()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("No suite loaded"));
@@ -69,7 +99,7 @@ public class ExecutionController {
                     .body(ApiResponse.error("groupName and caseId are required"));
         }
         try {
-            TestCase tc = executionService.executeSingleSync(session.getTestSuite(), groupName, caseId);
+            TestRequest tc = executionService.executeSingleSync(session.getTestSuite(), groupName, caseId);
             return ResponseEntity.ok(ApiResponse.ok("Re-run complete", tc));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
@@ -98,7 +128,7 @@ public class ExecutionController {
         if (group == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Group not found: " + groupName));
         }
-        TestCase tc = group.getTestCases().stream()
+        TestRequest tc = group.getTestRequests().stream()
                 .filter(c -> c.getId().equals(caseId)).findFirst().orElse(null);
         if (tc == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Case not found: " + caseId));

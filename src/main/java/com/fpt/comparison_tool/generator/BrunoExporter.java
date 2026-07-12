@@ -97,7 +97,7 @@ public class BrunoExporter {
         Set<String> usedOpIds = new HashSet<>();
 
         for (TestGroup group : nullSafe(suite.getTestGroups())) {
-            for (TestCase tc : nullSafe(group.getTestCases())) {
+            for (TestRequest tc : nullSafe(group.getTestRequests())) {
                 if (!tc.isEnabled()) continue;
                 addPath(paths, schemas, requestBodies, securitySchemes,
                         tc, group, baseUrl, authType, usedOpIds);
@@ -114,7 +114,7 @@ public class BrunoExporter {
     }
 
     private void addPath(ObjectNode paths, ObjectNode schemas, ObjectNode requestBodies,
-                         ObjectNode securitySchemes, TestCase tc, TestGroup group,
+                         ObjectNode securitySchemes, TestRequest tc, TestGroup group,
                          String baseUrl, AuthType authType, Set<String> usedOpIds) {
         String endpoint = tc.getEndpoint() != null ? tc.getEndpoint() : "/";
         if (!endpoint.startsWith("/")) endpoint = "/" + endpoint;
@@ -185,7 +185,7 @@ public class BrunoExporter {
     }
 
     private void addJsonBody(ObjectNode operation, ObjectNode schemas, ObjectNode requestBodies,
-                             TestCase tc, String opId) {
+                             TestRequest tc, String opId) {
         String schemaName = opId;
         // Schema with example
         ObjectNode schema = schemas.putObject(schemaName);
@@ -206,7 +206,7 @@ public class BrunoExporter {
         operation.putObject("requestBody").put("$ref", "#/components/requestBodies/" + schemaName);
     }
 
-    private void addFormBody(ObjectNode operation, TestCase tc) {
+    private void addFormBody(ObjectNode operation, TestRequest tc) {
         ObjectNode rb = operation.putObject("requestBody");
         ObjectNode schema = rb.putObject("content")
                 .putObject("application/x-www-form-urlencoded")
@@ -311,7 +311,7 @@ public class BrunoExporter {
                 .findFirst().orElse(null);
     }
 
-    private String uniqueOpId(TestCase tc, Set<String> used) {
+    private String uniqueOpId(TestRequest tc, Set<String> used) {
         String base = (tc.getId() != null ? tc.getId() : "op")
                 .toLowerCase().replaceAll("[^a-z0-9_]", "_");
         String candidate = base;

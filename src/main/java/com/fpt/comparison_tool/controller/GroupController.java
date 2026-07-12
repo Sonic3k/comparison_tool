@@ -251,6 +251,7 @@ public class GroupController {
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private ResponseEntity<ApiResponse<TestGroup>> applyImport(TestGroup imported, String mode) {
+        imported.normalize();
         TestGroup existing = findGroup(imported.getName());
         if (existing != null) {
             if ("replace".equalsIgnoreCase(mode)) {

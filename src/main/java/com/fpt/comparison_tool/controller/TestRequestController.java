@@ -1,7 +1,7 @@
 package com.fpt.comparison_tool.controller;
 
 import com.fpt.comparison_tool.dto.ApiResponse;
-import com.fpt.comparison_tool.model.TestCase;
+import com.fpt.comparison_tool.model.TestRequest;
 import com.fpt.comparison_tool.model.TestGroup;
 import com.fpt.comparison_tool.service.SessionService;
 import org.springframework.http.ResponseEntity;
@@ -11,44 +11,47 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/groups/{groupName}/cases")
-public class TestCaseController {
+public class TestRequestController {
 
     private final SessionService session;
 
-    public TestCaseController(SessionService session) {
+    public TestRequestController(SessionService session) {
         this.session = session;
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<TestCase>>> listCases(
+    public ResponseEntity<ApiResponse<List<TestRequest>>> listCases(
             @PathVariable("groupName") String groupName) {
-        return ResponseEntity.ok(ApiResponse.ok(requireGroup(groupName).getTestCases()));
+        return ResponseEntity.ok(ApiResponse.ok(requireGroup(groupName).getTestRequests()));
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<TestCase>> createCase(
-            @PathVariable("groupName") String groupName, @RequestBody TestCase testCase) {
+    public ResponseEntity<ApiResponse<TestRequest>> createCase(
+            @PathVariable("groupName") String groupName, @RequestBody TestRequest testRequest) {
         TestGroup group = requireGroup(groupName);
-        if (findCase(group, testCase.getId()) != null) {
+        if (findCase(group, testRequest.getId()) != null) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Test case ID '" + testCase.getId() + "' already exists"));
+                    .body(ApiResponse.error("Test case ID '" + testRequest.getId() + "' already exists"));
         }
-        group.addTestCase(testCase);
-        return ResponseEntity.ok(ApiResponse.ok("Test case created", testCase));
+        group.addTestRequest(testRequest);
+        group.normalize();
+        return ResponseEntity.ok(ApiResponse.ok("Test case created", testRequest));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<TestCase>> updateCase(
+    public ResponseEntity<ApiResponse<TestRequest>> updateCase(
             @PathVariable("groupName") String groupName,
             @PathVariable("id") String id,
-            @RequestBody TestCase updated) {
+            @RequestBody TestRequest updated) {
         TestGroup group = requireGroup(groupName);
-        TestCase existing = requireCase(group, id);
+        TestRequest existing = requireCase(group, id);
 
         // Replace all definition fields but keep result intact
         existing.setName(updated.getName());
         existing.setDescription(updated.getDescription());
         existing.setEnabled(updated.isEnabled());
+        existing.setVerificationMode(updated.getVerificationMode());
+        existing.setPhase(updated.getPhase());
         existing.setMethod(updated.getMethod());
         existing.setEndpoint(updated.getEndpoint());
         existing.setQueryParams(updated.getQueryParams());
@@ -56,7 +59,13 @@ public class TestCaseController {
         existing.setJsonBody(updated.getJsonBody());
         existing.setHeaders(updated.getHeaders());
         existing.setAuthor(updated.getAuthor());
+        existing.setExtractVariables(updated.getExtractVariables());
         existing.setComparisonConfig(updated.getComparisonConfig());
+        existing.setAutomationConfig(updated.getAutomationConfig());
+        if (updated.getTestCaseId() != null && !updated.getTestCaseId().isBlank()) {
+            existing.setTestCaseId(updated.getTestCaseId());
+        }
+        group.normalize();
 
         return ResponseEntity.ok(ApiResponse.ok(existing));
     }
@@ -65,7 +74,7 @@ public class TestCaseController {
     public ResponseEntity<ApiResponse<Void>> deleteCase(
             @PathVariable("groupName") String groupName, @PathVariable("id") String id) {
         TestGroup group = requireGroup(groupName);
-        boolean removed = group.getTestCases().removeIf(tc -> tc.getId().equals(id));
+        boolean removed = group.getTestRequests().removeIf(tc -> tc.getId().equals(id));
         if (!removed) return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Test case '" + id + "' not found"));
         return ResponseEntity.ok(ApiResponse.ok("Test case deleted", null));
@@ -73,10 +82,10 @@ public class TestCaseController {
 
 
     @PatchMapping("/{caseId}/toggle")
-    public ResponseEntity<ApiResponse<TestCase>> toggleCase(
+    public ResponseEntity<ApiResponse<TestRequest>> toggleCase(
             @PathVariable("groupName") String groupName, @PathVariable("caseId") String caseId) {
         TestGroup group = requireGroup(groupName);
-        TestCase tc = requireCase(group, caseId);
+        TestRequest tc = requireCase(group, caseId);
         tc.setEnabled(!tc.isEnabled());
         return ResponseEntity.ok(ApiResponse.ok(tc));
     }
@@ -90,14 +99,14 @@ public class TestCaseController {
                 .orElseThrow(() -> new IllegalArgumentException("Group '" + name + "' not found"));
     }
 
-    private TestCase findCase(TestGroup group, String id) {
-        return group.getTestCases().stream()
+    private TestRequest findCase(TestGroup group, String id) {
+        return group.getTestRequests().stream()
                 .filter(tc -> tc.getId().equals(id))
                 .findFirst().orElse(null);
     }
 
-    private TestCase requireCase(TestGroup group, String id) {
-        TestCase tc = findCase(group, id);
+    private TestRequest requireCase(TestGroup group, String id) {
+        TestRequest tc = findCase(group, id);
         if (tc == null) throw new IllegalArgumentException("Test case '" + id + "' not found");
         return tc;
     }

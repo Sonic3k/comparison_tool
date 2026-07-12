@@ -46,6 +46,12 @@ public class TestSuite {
     public void addAuthProfile(AuthProfile p)   { this.authProfiles.add(p); }
     public void addEnvironment(Environment env) { this.environments.add(env); }
 
+    /** Enforce Test Case invariants across all groups. See TestGroup#normalize(). */
+    public void normalize() {
+        if (testGroups == null) return;
+        for (TestGroup g : testGroups) g.normalize();
+    }
+
     public Environment findEnvironment(String name) {
         if (name == null || environments == null) return null;
         return environments.stream()

@@ -13,6 +13,7 @@ public class SampleDataBuilder {
         suite.setEnvironments(buildEnvironments());
         suite.setAuthProfiles(buildAuthProfiles());
         suite.getTestGroups().addAll(buildTestGroups());
+        suite.normalize();
         return suite;
     }
 
@@ -93,7 +94,7 @@ public class SampleDataBuilder {
         TestGroup g = new TestGroup("User APIs",
                 "User management API tests for v2.0 migration", "john.doe@company.com");
 
-        g.addTestCase(tc("TC001", "Get User Profile", "Retrieve user profile by user ID",
+        g.addTestRequest(tc("TC001", "Get User Profile", "Retrieve user profile by user ID",
                 true, HttpMethod.GET, "/api/users/12345", "john.doe@company.com")
             .withQueryParams(Arrays.asList(new Param("include", "profile"), new Param("include", "preferences")))
             .withResult(result(ExecutionStatus.PASSED, "",  "200", "200",
@@ -101,8 +102,15 @@ public class SampleDataBuilder {
                 "{\"id\":12345,\"name\":\"John Doe\",\"email\":\"john@example.com\"}",
                 "2025-01-15 10:30:15")));
 
-        g.addTestCase(tc("TC002", "Create New User", "Create a new user account with validation",
+        // TC002 is a multi-request test case: two requests share testCaseId
+        // "TC002" — the create call extracts the new user's id, the verify call
+        // consumes it via {{newUserId}}. They always execute sequentially.
+        g.getTestCaseDefs().add(new TestCaseDef("TC002", "Create New User",
+                "Create a new user account, then verify it exists via GET"));
+
+        g.addTestRequest(tc("TC002_1", "Create New User", "Create a new user account with validation",
                 true, HttpMethod.POST, "/api/users", "jane.smith@company.com")
+            .withTestCaseId("TC002")
             .withJsonBody("{\"name\":\"John Doe\",\"email\":\"john.doe@example.com\",\"role\":\"user\"}")
             .withResult(result(ExecutionStatus.FAILED,
                 "Response field \"created_at\" format differs: ISO string vs timestamp",
@@ -111,7 +119,15 @@ public class SampleDataBuilder {
                 "{\"id\":67890,\"created_at\":1737024615}",
                 "2025-01-15 10:30:17")));
 
-        g.addTestCase(tc("TC003", "Update User Email", "Update user email address",
+        TestRequest verify = tc("TC002_2", "Verify Created User", "Fetch the user created in TC002_1",
+                true, HttpMethod.GET, "/api/users/{{newUserId}}", "jane.smith@company.com")
+            .withTestCaseId("TC002");
+        g.addTestRequest(verify);
+
+        // Extract the id from the create response for the verify request
+        g.findTestRequest("TC002_1").setExtractVariables("newUserId=$.id");
+
+        g.addTestRequest(tc("TC003", "Update User Email", "Update user email address",
                 true, HttpMethod.PUT, "/api/users/12345/email", "mike.wilson@company.com")
             .withJsonBody("{\"email\":\"newemail@example.com\"}")
             .withResult(result(ExecutionStatus.PASSED, "", "200", "200",
@@ -119,12 +135,12 @@ public class SampleDataBuilder {
                 "{\"id\":12345,\"email\":\"newemail@example.com\"}",
                 "2025-01-15 10:30:19")));
 
-        g.addTestCase(tc("TC004", "Delete User Account", "Soft delete user account",
+        g.addTestRequest(tc("TC004", "Delete User Account", "Soft delete user account",
                 true, HttpMethod.DELETE, "/api/users/12345", "sarah.jones@company.com")
             .withQueryParams(Arrays.asList(new Param("reason", "user_request")))
             .withResult(result(ExecutionStatus.PASSED, "", "204", "204", "", "", "2025-01-15 10:30:21")));
 
-        g.addTestCase(tc("TC005", "List Users with Pagination", "Get paginated user list",
+        g.addTestRequest(tc("TC005", "List Users with Pagination", "Get paginated user list",
                 true, HttpMethod.GET, "/api/users", "david.brown@company.com")
             .withQueryParams(Arrays.asList(
                 new Param("page", "1"), new Param("limit", "10"), new Param("status", "active")))
@@ -142,7 +158,7 @@ public class SampleDataBuilder {
         TestGroup g = new TestGroup("Auth APIs",
                 "Authentication and session management tests", "lisa.garcia@company.com");
 
-        g.addTestCase(tc("TC001", "User Login", "Authenticate user with email and password",
+        g.addTestRequest(tc("TC001", "User Login", "Authenticate user with email and password",
                 true, HttpMethod.POST, "/api/auth/login", "lisa.garcia@company.com")
             .withJsonBody("{\"email\":\"user@example.com\",\"password\":\"password123\"}")
             .withResult(result(ExecutionStatus.ERROR,
@@ -152,11 +168,11 @@ public class SampleDataBuilder {
                 "{\"error\":\"Internal Server Error\"}",
                 "2025-01-15 10:30:25")));
 
-        g.addTestCase(tc("TC002", "Token Refresh", "Refresh access token",
+        g.addTestRequest(tc("TC002", "Token Refresh", "Refresh access token",
                 true, HttpMethod.POST, "/api/auth/refresh", "lisa.garcia@company.com")
             .withJsonBody("{\"refresh_token\":\"refresh.token.here\"}"));
 
-        g.addTestCase(tc("TC003", "Logout", "Invalidate current user session",
+        g.addTestRequest(tc("TC003", "Logout", "Invalidate current user session",
                 true, HttpMethod.POST, "/api/auth/logout", "lisa.garcia@company.com"));
 
         return g;
@@ -166,7 +182,7 @@ public class SampleDataBuilder {
         TestGroup g = new TestGroup("Order APIs",
                 "Order management and fulfillment API tests", "robert.taylor@company.com");
 
-        g.addTestCase(tc("TC001", "Get Order Details", "Retrieve detailed order information",
+        g.addTestRequest(tc("TC001", "Get Order Details", "Retrieve detailed order information",
                 true, HttpMethod.GET, "/api/orders/ORD-12345", "robert.taylor@company.com")
             .withQueryParams(Arrays.asList(new Param("include", "items"), new Param("include", "customer")))
             .withResult(result(ExecutionStatus.PASSED, "", "200", "200",
@@ -174,7 +190,7 @@ public class SampleDataBuilder {
                 "{\"orderId\":\"ORD-12345\",\"status\":\"confirmed\"}",
                 "2025-01-15 10:30:27")));
 
-        g.addTestCase(tc("TC002", "Cancel Order", "Cancel an existing order",
+        g.addTestRequest(tc("TC002", "Cancel Order", "Cancel an existing order",
                 true, HttpMethod.PATCH, "/api/orders/ORD-12345/cancel", "robert.taylor@company.com")
             .withJsonBody("{\"reason\":\"customer_request\"}"));
 
@@ -185,11 +201,11 @@ public class SampleDataBuilder {
         TestGroup g = new TestGroup("Payment APIs",
                 "Payment processing and refund API tests (disabled by default)", "anna.martinez@company.com");
 
-        g.addTestCase(tc("TC001", "Process Payment", "Process payment for an order",
+        g.addTestRequest(tc("TC001", "Process Payment", "Process payment for an order",
                 false, HttpMethod.POST, "/api/payments", "anna.martinez@company.com")
             .withJsonBody("{\"orderId\":\"ORD-12345\",\"amount\":99.99,\"currency\":\"USD\"}"));
 
-        g.addTestCase(tc("TC002", "Get Payment Status", "Check payment status by payment ID",
+        g.addTestRequest(tc("TC002", "Get Payment Status", "Check payment status by payment ID",
                 true, HttpMethod.GET, "/api/payments/PAY-99999", "anna.martinez@company.com"));
 
         return g;
@@ -197,10 +213,10 @@ public class SampleDataBuilder {
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private static TestCase tc(String id, String name, String description,
+    private static TestRequest tc(String id, String name, String description,
                                 boolean enabled, HttpMethod method,
                                 String endpoint, String author) {
-        return new TestCase(id, name, description, enabled, method, endpoint, author);
+        return new TestRequest(id, name, description, enabled, method, endpoint, author);
     }
 
     private static TestResult result(ExecutionStatus status, String differences,

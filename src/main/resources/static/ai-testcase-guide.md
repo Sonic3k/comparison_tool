@@ -12,21 +12,49 @@ This document describes the JSON format for creating test cases that can be impo
   "description": "What this group tests",
   "owner": "tester@company.com",
   "enabled": true,
-  "testCases": [ ...array of test cases... ]
+  "testCaseDefs": [
+    { "id": "TC-U01", "name": "Create user – full flow", "description": "..." }
+  ],
+  "testRequests": [ ...array of test requests... ]
 }
 ```
 
 > **One file = one group.** To import multiple groups, create one JSON file per group and import them separately.
 
+### Test Case vs Test Request
+
+- A **Test Request** is one executable HTTP call (the objects in `testRequests`).
+- A **Test Case** is a logical case — it maps 1-1 to a manual regression test case and consists of **one or more** test requests. Requests reference their test case via `testCaseId`.
+- `testCaseDefs` is the registry of test cases in the group (`id`, `name`, `description`).
+- Both `testCaseDefs` and `testCaseId` are **optional**: if omitted, every request becomes its own test case (`testCaseId` = request `id`) and defs are auto-created on import.
+- Requests sharing the same `testCaseId` **always execute sequentially in declared order** (so `extractVariables` chains inside a test case work), while different test cases can run in parallel.
+- Legacy files using the old key `testCases` (JSON) or `<testCase>` elements (XML) still import fine.
+
+Example — one test case made of two requests:
+
+```json
+"testCaseDefs": [
+  { "id": "SO-01", "name": "Submit order end-to-end", "description": "Create then verify" }
+],
+"testRequests": [
+  { "id": "SO-01_1", "testCaseId": "SO-01", "name": "Create order", "method": "POST",
+    "endpoint": "/orders", "verificationMode": "none", "phase": "test",
+    "jsonBody": "{\"item\":\"abc\"}", "extractVariables": "orderId=$.id", "enabled": true, "result": null },
+  { "id": "SO-01_2", "testCaseId": "SO-01", "name": "Verify order", "method": "GET",
+    "endpoint": "/orders/{{orderId}}", "verificationMode": "comparison", "phase": "test",
+    "enabled": true, "result": null }
+]
+```
+
 ---
 
-## Test Case Fields
+## Test Request Fields
 
 ### Required Fields
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | string | Unique within the group. Convention: `TC-U01`, `SO-01`, `GS-01` |
+| `id` | string | Unique within the group. Convention: `TC-U01`, `SO-01_1`, `GS-01` |
 | `name` | string | Short display name |
 | `enabled` | boolean | `true` to run, `false` to skip |
 | `verificationMode` | string | See table below |
@@ -38,7 +66,8 @@ This document describes the JSON format for creating test cases that can be impo
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `description` | string | `""` | Purpose of the TC |
+| `testCaseId` | string | request `id` | Logical test case this request belongs to. Give several requests the same value to form a multi-request test case |
+| `description` | string | `""` | Purpose of the request |
 | `queryParams` | array | `[]` | URL query parameters — array of `{key, value}` objects |
 | `formParams` | array | `[]` | Form-encoded body params — array of `{key, value}` objects |
 | `jsonBody` | string | `""` | Raw JSON string for request body |
@@ -456,11 +485,14 @@ Generate a JSON TestGroup for the API Comparison Tool. The output must be a sing
   "description": "<description>",
   "owner": "<email>",
   "enabled": true,
-  "testCases": [ ...array of test case objects... ]
+  "testCaseDefs": [ ...array of {id, name, description} test case entries... ],
+  "testRequests": [ ...array of test request objects... ]
 }
 
 Rules:
 - Always set "result": null
+- A test request may set "testCaseId" to group several requests into ONE logical test case; list that id in "testCaseDefs". Requests of the same test case run sequentially in declared order
+- If a request has no "testCaseId", it is its own test case (defs auto-created)
 - "endpoint" is a path only, never a full URL
 - "jsonBody" must be a JSON string (escaped), not an object
 - "queryParams" and "formParams" are arrays of {"key": "...", "value": "..."} objects

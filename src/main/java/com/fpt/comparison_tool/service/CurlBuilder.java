@@ -5,7 +5,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 
 /**
- * Builds a copy-pastable cURL command for a TestCase against a given Environment.
+ * Builds a copy-pastable cURL command for a TestRequest against a given Environment.
  *
  * The cURL reflects what the tool actually sends: base URL + endpoint + query,
  * default env headers, TC header overrides, auth header (with token already
@@ -23,7 +23,7 @@ public class CurlBuilder {
         this.authService = authService;
     }
 
-    public String build(Environment env, TestCase tc, AuthProfile auth) {
+    public String build(Environment env, TestRequest tc, AuthProfile auth) {
         if (env == null) return "# Environment not configured";
 
         HttpHeaders headers = new HttpHeaders();

@@ -3,6 +3,7 @@ package com.fpt.comparison_tool.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fpt.comparison_tool.dto.ExecutionProgress;
+import com.fpt.comparison_tool.dto.ExecutionStartRequest;
 import com.fpt.comparison_tool.model.*;
 import com.fpt.comparison_tool.service.AssertionService.AssertionLine;
 import org.springframework.http.*;
@@ -44,29 +45,37 @@ public class ExecutionService {
         this.executor          = executionExecutor;
     }
 
-    public void startAsync(TestSuite suite, List<String> groupFilter, ExecutionProgress progress) {
-        List<TestGroup> allGroups;
-        int total;
+    public void startAsync(TestSuite suite, ExecutionStartRequest request, ExecutionProgress progress) {
+        ResolvedScope scope;
+        List<String> plannedKeys;
         try {
-            allGroups = filterGroups(suite, groupFilter);
-            ExecutionConfig ec0 = suite.getSettings().getExecutionConfig();
-            VerificationMode suiteFilter = ec0.getVerificationMode();
+            suite.normalize();
+            scope = resolveScope(suite, request);
+            if (scope.emptyReason() != null) {
+                progress.abort(scope.emptyReason());
+                return;
+            }
 
-            // Count only TCs that will actually run
-            total = allGroups.stream()
-                    .mapToInt(g -> (int) g.getTestCases().stream()
-                            .filter(TestCase::isEnabled)
-                            .filter(tc -> !shouldSkip(tc, suiteFilter))
-                            .count())
-                    .sum();
+            VerificationMode suiteFilter = suite.getSettings().getExecutionConfig().getVerificationMode();
+            plannedKeys = new ArrayList<>();
+            for (TestGroup g : scope.groups()) {
+                for (TestRequest r : runnableRequests(g, suiteFilter, scope.filterFor(g), scope.runSetupTeardown(g))) {
+                    plannedKeys.add(ExecutionProgress.key(g.getName(), r.getId()));
+                }
+            }
+            if (plannedKeys.isEmpty()) {
+                progress.abort("Nothing to run for the requested scope");
+                return;
+            }
         } catch (Exception e) {
             // Setup failed before we even started — make sure flag is clean
             progress.abort("Setup error: " + e.getMessage());
             return;
         }
 
-        progress.start(total);
+        progress.start(plannedKeys.size(), plannedKeys);
 
+        final ResolvedScope fScope = scope;
         CompletableFuture.runAsync(() -> {
             try {
                 ExecutionConfig ec = suite.getSettings().getExecutionConfig();
@@ -80,11 +89,11 @@ public class ExecutionService {
                 Map<String, String> suiteVars = new ConcurrentHashMap<>();
 
                 // Separate groups: global setup → normal → global teardown
-                List<TestGroup> setupGroups   = new ArrayList<>();
-                List<TestGroup> normalGroups  = new ArrayList<>();
+                List<TestGroup> setupGroups    = new ArrayList<>();
+                List<TestGroup> normalGroups   = new ArrayList<>();
                 List<TestGroup> teardownGroups = new ArrayList<>();
 
-                for (TestGroup g : allGroups) {
+                for (TestGroup g : fScope.groups()) {
                     if (g.getName().startsWith(GLOBAL_SETUP_PREFIX))         setupGroups.add(g);
                     else if (g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) teardownGroups.add(g);
                     else                                                     normalGroups.add(g);
@@ -92,18 +101,23 @@ public class ExecutionService {
 
                 // 1. Global Setup groups — sequential, variables go to suiteVars
                 for (TestGroup g : setupGroups) {
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars);
+                    if (progress.isStopRequested()) break;
+                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true);
                 }
 
                 // 2. Normal groups — each gets its own groupVars (initialized with suiteVars)
-                for (TestGroup g : normalGroups) {
-                    Map<String, String> groupVars = new ConcurrentHashMap<>(suiteVars);
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, groupVars);
+                if (!progress.isStopRequested()) {
+                    for (TestGroup g : normalGroups) {
+                        if (progress.isStopRequested()) break;
+                        Map<String, String> groupVars = new ConcurrentHashMap<>(suiteVars);
+                        executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, groupVars,
+                                fScope.filterFor(g), fScope.runSetupTeardown(g));
+                    }
                 }
 
-                // 3. Global Teardown groups — sequential, always run
+                // 3. Global Teardown groups — sequential, ALWAYS run (even after stop)
                 for (TestGroup g : teardownGroups) {
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars);
+                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true);
                 }
 
             } catch (Exception e) {
@@ -118,46 +132,170 @@ public class ExecutionService {
         });
     }
 
+    // ── Scope resolution ──────────────────────────────────────────────────────
+
+    /**
+     * Resolved execution scope.
+     *
+     * tcFilter == null            → full run (all/groups scope)
+     * tcFilter per group non-null → only TEST-phase requests whose testCaseId
+     *                               is in the set run; setup/teardown phases of
+     *                               that group run iff includeSetup.
+     */
+    private record ResolvedScope(List<TestGroup> groups,
+                                 Map<String, Set<String>> tcFilter,
+                                 boolean includeSetup,
+                                 String emptyReason) {
+
+        Set<String> filterFor(TestGroup g) {
+            return tcFilter == null ? null : tcFilter.get(g.getName());
+        }
+
+        boolean runSetupTeardown(TestGroup g) {
+            if (tcFilter == null) return true;
+            if (g.getName().startsWith(GLOBAL_SETUP_PREFIX)
+                    || g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) return true;
+            return includeSetup;
+        }
+    }
+
+    private ResolvedScope resolveScope(TestSuite suite, ExecutionStartRequest request) {
+        String scope = request != null && request.getScope() != null
+                ? request.getScope().toLowerCase().trim() : "";
+        boolean includeSetup = request == null
+                || request.getIncludeSetup() == null || request.getIncludeSetup();
+
+        List<ExecutionStartRequest.TestCaseRef> refs = null;
+        if ("failed".equals(scope)) {
+            refs = collectFailedTestCases(suite);
+            if (refs.isEmpty()) {
+                return new ResolvedScope(List.of(), Map.of(), includeSetup,
+                        "No failed test cases to re-run");
+            }
+        } else if ("testcases".equals(scope)
+                || (request != null && request.getTestCases() != null && !request.getTestCases().isEmpty())) {
+            refs = request != null ? request.getTestCases() : null;
+            if (refs == null || refs.isEmpty()) {
+                return new ResolvedScope(List.of(), Map.of(), includeSetup,
+                        "No test cases specified");
+            }
+        }
+
+        if (refs != null) {
+            Map<String, Set<String>> byGroup = new LinkedHashMap<>();
+            for (ExecutionStartRequest.TestCaseRef ref : refs) {
+                if (ref.getGroupName() == null || ref.getTestCaseId() == null) continue;
+                byGroup.computeIfAbsent(ref.getGroupName(), k -> new LinkedHashSet<>())
+                       .add(ref.getTestCaseId());
+            }
+            List<TestGroup> groups = new ArrayList<>();
+            for (TestGroup g : suite.getTestGroups()) {
+                boolean isGlobal = g.getName().startsWith(GLOBAL_SETUP_PREFIX)
+                        || g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX);
+                if (byGroup.containsKey(g.getName()) || (isGlobal && includeSetup)) {
+                    groups.add(g);
+                }
+            }
+            return new ResolvedScope(groups, byGroup, includeSetup, null);
+        }
+
+        // all / groups scope — legacy body { "groups": [...] } lands here
+        List<String> groupNames = request != null ? request.getGroups() : null;
+        return new ResolvedScope(filterGroups(suite, groupNames), null, true, null);
+    }
+
+    /** Every enabled test case whose rolled-up status is failed/error. */
+    private List<ExecutionStartRequest.TestCaseRef> collectFailedTestCases(TestSuite suite) {
+        List<ExecutionStartRequest.TestCaseRef> refs = new ArrayList<>();
+        for (TestGroup g : suite.getTestGroups()) {
+            if (!g.isEnabled()) continue;
+            if (g.getName().startsWith(GLOBAL_SETUP_PREFIX)
+                    || g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) continue;
+            Set<String> added = new LinkedHashSet<>();
+            for (TestRequest r : g.getTestRequests()) {
+                if (!r.isEnabled() || r.getResult() == null || r.getResult().getStatus() == null) continue;
+                ExecutionStatus st = r.getResult().getStatus();
+                if (st == ExecutionStatus.FAILED || st == ExecutionStatus.ERROR) {
+                    String tcId = r.getTestCaseId() != null ? r.getTestCaseId() : r.getId();
+                    if (added.add(tcId)) {
+                        refs.add(new ExecutionStartRequest.TestCaseRef(g.getName(), tcId));
+                    }
+                }
+            }
+        }
+        return refs;
+    }
+
+    /** The requests of a group that will actually execute under the given scope. */
+    private List<TestRequest> runnableRequests(TestGroup group, VerificationMode suiteFilter,
+                                               Set<String> tcFilter, boolean runSetupTeardown) {
+        List<TestRequest> out = new ArrayList<>();
+        for (TestRequest r : group.getTestRequests()) {
+            if (!r.isEnabled() || shouldSkip(r, suiteFilter)) continue;
+            boolean setupOrTeardown = r.getPhase() == Phase.SETUP || r.getPhase() == Phase.TEARDOWN;
+            if (setupOrTeardown) {
+                if (runSetupTeardown) out.add(r);
+            } else if (tcFilter == null
+                    || tcFilter.contains(r.getTestCaseId() != null ? r.getTestCaseId() : r.getId())) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
     // ── Group execution with phases ───────────────────────────────────────────
 
     private void executeGroup(TestGroup group, TestSuite suite, ExecutionMode execMode,
                               VerificationMode suiteFilter,
                               Environment sourceEnv, Environment targetEnv,
                               ExecutionProgress progress,
-                              Map<String, String> variables) {
+                              Map<String, String> variables,
+                              Set<String> tcFilter, boolean runSetupTeardown) {
 
-        List<TestCase> enabled = group.getTestCases().stream()
-                .filter(TestCase::isEnabled)
-                .filter(tc -> !shouldSkip(tc, suiteFilter))
-                .collect(Collectors.toList());
+        List<TestRequest> runnable = runnableRequests(group, suiteFilter, tcFilter, runSetupTeardown);
 
         // Split by phase
-        List<TestCase> setupTCs    = enabled.stream().filter(tc -> tc.getPhase() == Phase.SETUP).collect(Collectors.toList());
-        List<TestCase> testTCs     = enabled.stream().filter(tc -> tc.getPhase() == Phase.TEST).collect(Collectors.toList());
-        List<TestCase> teardownTCs = enabled.stream().filter(tc -> tc.getPhase() == Phase.TEARDOWN).collect(Collectors.toList());
+        List<TestRequest> setupReqs    = runnable.stream().filter(r -> r.getPhase() == Phase.SETUP).collect(Collectors.toList());
+        List<TestRequest> testReqs     = runnable.stream().filter(r -> r.getPhase() == Phase.TEST).collect(Collectors.toList());
+        List<TestRequest> teardownReqs = runnable.stream().filter(r -> r.getPhase() == Phase.TEARDOWN).collect(Collectors.toList());
 
         // 1. Setup — always sequential
-        for (TestCase tc : setupTCs) {
-            executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress, variables);
+        for (TestRequest r : setupReqs) {
+            if (progress.isStopRequested()) break;
+            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
         }
 
-        // 2. Test — parallel or sequential per config
-        if (execMode == ExecutionMode.PARALLEL && testTCs.size() > 1) {
-            List<CompletableFuture<Void>> futures = testTCs.stream()
-                    .map(tc -> CompletableFuture.runAsync(
-                            () -> executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress, variables),
-                            executor))
-                    .collect(Collectors.toList());
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        } else {
-            for (TestCase tc : testTCs) {
-                executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress, variables);
+        // 2. Test — requests of the SAME test case always run sequentially in
+        //    declared order (they may depend on each other via extractVariables);
+        //    different test cases run in parallel when mode = PARALLEL.
+        if (!progress.isStopRequested()) {
+            Map<String, List<TestRequest>> chunks = new LinkedHashMap<>();
+            for (TestRequest r : testReqs) {
+                String tcId = r.getTestCaseId() != null ? r.getTestCaseId() : r.getId();
+                chunks.computeIfAbsent(tcId, k -> new ArrayList<>()).add(r);
+            }
+
+            if (execMode == ExecutionMode.PARALLEL && chunks.size() > 1) {
+                List<CompletableFuture<Void>> futures = chunks.values().stream()
+                        .map(chunk -> CompletableFuture.runAsync(() -> {
+                            for (TestRequest r : chunk) {
+                                if (progress.isStopRequested()) return;
+                                executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+                            }
+                        }, executor))
+                        .collect(Collectors.toList());
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            } else {
+                for (TestRequest r : testReqs) {
+                    if (progress.isStopRequested()) break;
+                    executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+                }
             }
         }
 
-        // 3. Teardown — always sequential, always runs
-        for (TestCase tc : teardownTCs) {
-            executeAndRecord(tc, group, suite, sourceEnv, targetEnv, progress, variables);
+        // 3. Teardown — always sequential, ALWAYS runs (even after stop)
+        for (TestRequest r : teardownReqs) {
+            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
         }
     }
 
@@ -167,7 +305,7 @@ public class ExecutionService {
      * null filter = run all.
      * Setup/teardown phase TCs always run regardless of filter.
      */
-    private boolean shouldSkip(TestCase tc, VerificationMode suiteFilter) {
+    private boolean shouldSkip(TestRequest tc, VerificationMode suiteFilter) {
         if (suiteFilter == null) return false;
         // Setup/teardown always run
         if (tc.getPhase() == Phase.SETUP || tc.getPhase() == Phase.TEARDOWN) return false;
@@ -192,13 +330,13 @@ public class ExecutionService {
      * Returns the TC with its result freshly updated, or throws if the TC
      * cannot be located in the suite.
      */
-    public TestCase executeSingleSync(TestSuite suite, String groupName, String caseId) {
+    public TestRequest executeSingleSync(TestSuite suite, String groupName, String caseId) {
         TestGroup group = suite.getTestGroups().stream()
                 .filter(g -> g.getName().equals(groupName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + groupName));
 
-        TestCase tc = group.getTestCases().stream()
+        TestRequest tc = group.getTestRequests().stream()
                 .filter(c -> c.getId().equals(caseId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Case not found: " + caseId));
@@ -219,7 +357,7 @@ public class ExecutionService {
         return tc;
     }
 
-    private void executeAndRecord(TestCase tc, TestGroup group, TestSuite suite,
+    private void executeAndRecord(TestRequest tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress,
                                   Map<String, String> variables) {
@@ -227,8 +365,10 @@ public class ExecutionService {
                 ? tc.getVerificationMode() : VerificationMode.COMPARISON;
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FMT);
 
+        progress.recordStart(group.getName(), tc);
+
         // Resolve {{variables}} in TC fields before execution
-        TestCase resolved = resolveVariables(tc, variables);
+        TestRequest resolved = resolveVariables(tc, variables);
 
         try {
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
@@ -256,13 +396,13 @@ public class ExecutionService {
             r.setComparisonResult("Execution error: " + e.getMessage());
             r.setExecutedAt(timestamp);
             tc.setResult(r);
-            progress.recordError(group.getName(), tc.getId());
+            progress.recordError(group.getName(), tc);
         }
     }
 
     // ── NONE mode ─────────────────────────────────────────────────────────────
 
-    private String runNone(TestCase resolved, TestCase original, TestGroup group, TestSuite suite,
+    private String runNone(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                            Environment targetEnv, AuthProfile targetAuth,
                            ExecutionProgress progress, String timestamp) throws Exception {
         ResponseEntity<String> targetResp = callEndpoint(targetEnv, resolved, targetAuth);
@@ -279,15 +419,15 @@ public class ExecutionService {
         r.setComparisonResult(tgtStatus >= 400 ? "Target returned " + tgtStatus : "");
         original.setResult(r);
 
-        if (r.getStatus() == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), original.getId());
-        else                                          progress.recordError(group.getName(), original.getId());
+        if (r.getStatus() == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), original);
+        else                                          progress.recordError(group.getName(), original);
 
         return tgtBody;
     }
 
     // ── COMPARISON mode ───────────────────────────────────────────────────────
 
-    private void runComparison(TestCase resolved, TestCase original, TestGroup group, TestSuite suite,
+    private void runComparison(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                                Environment sourceEnv, Environment targetEnv,
                                ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
         ComparisonConfig cmp = resolveComparison(original, suite);
@@ -319,7 +459,7 @@ public class ExecutionService {
             r.setStatus(ExecutionStatus.ERROR);
             r.setComparisonResult(msg);
             original.setResult(r);
-            progress.recordError(group.getName(), original.getId());
+            progress.recordError(group.getName(), original);
             return;
         }
 
@@ -328,13 +468,13 @@ public class ExecutionService {
         r.setComparisonResult(String.join("\n", diffs));
         original.setResult(r);
 
-        if (r.getStatus() == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), original.getId());
-        else                                          progress.recordFailed(group.getName(), original.getId());
+        if (r.getStatus() == ExecutionStatus.PASSED) progress.recordPassed(group.getName(), original);
+        else                                          progress.recordFailed(group.getName(), original);
     }
 
     // ── AUTOMATION mode ───────────────────────────────────────────────────────
 
-    private String runAutomation(TestCase resolved, TestCase original, TestGroup group, TestSuite suite,
+    private String runAutomation(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                                  Environment targetEnv, AuthProfile targetAuth,
                                  ExecutionProgress progress, String timestamp) throws Exception {
         AutomationConfig auto = original.getAutomationConfig();
@@ -366,15 +506,15 @@ public class ExecutionService {
         r.setAssertionResult(assertionService.summarize(assertions));
         original.setResult(r);
 
-        if (passed) progress.recordPassed(group.getName(), original.getId());
-        else        progress.recordFailed(group.getName(), original.getId());
+        if (passed) progress.recordPassed(group.getName(), original);
+        else        progress.recordFailed(group.getName(), original);
 
         return tgtBody;
     }
 
     // ── BOTH mode ─────────────────────────────────────────────────────────────
 
-    private String runBoth(TestCase resolved, TestCase original, TestGroup group, TestSuite suite,
+    private String runBoth(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                            Environment sourceEnv, Environment targetEnv,
                            ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
         ComparisonConfig cmp = resolveComparison(original, suite);
@@ -432,8 +572,8 @@ public class ExecutionService {
         r.setStatus(bothPass ? ExecutionStatus.PASSED : ExecutionStatus.FAILED);
         original.setResult(r);
 
-        if (bothPass) progress.recordPassed(group.getName(), original.getId());
-        else          progress.recordFailed(group.getName(), original.getId());
+        if (bothPass) progress.recordPassed(group.getName(), original);
+        else          progress.recordFailed(group.getName(), original);
 
         return tgtBody;
     }
@@ -496,11 +636,12 @@ public class ExecutionService {
      * Creates a shallow copy of TC with {{variable}} placeholders resolved.
      * Original TC is not modified — results are written to original.
      */
-    private TestCase resolveVariables(TestCase tc, Map<String, String> variables) {
+    private TestRequest resolveVariables(TestRequest tc, Map<String, String> variables) {
         if (variables.isEmpty()) return tc;
 
-        TestCase copy = new TestCase();
+        TestRequest copy = new TestRequest();
         copy.setId(tc.getId());
+        copy.setTestCaseId(tc.getTestCaseId());
         copy.setName(tc.getName());
         copy.setDescription(tc.getDescription());
         copy.setEnabled(tc.isEnabled());
@@ -549,7 +690,7 @@ public class ExecutionService {
 
     // ── HTTP call ─────────────────────────────────────────────────────────────
 
-    private ResponseEntity<String> callEndpoint(Environment env, TestCase tc, AuthProfile auth) {
+    private ResponseEntity<String> callEndpoint(Environment env, TestRequest tc, AuthProfile auth) {
         HttpHeaders headers = new HttpHeaders();
 
         if (env != null && env.getHeaders() != null) {
@@ -580,7 +721,7 @@ public class ExecutionService {
         return restTemplate.exchange(url, method, entity, String.class);
     }
 
-    private String buildUrl(String baseUrl, TestCase tc) {
+    private String buildUrl(String baseUrl, TestRequest tc) {
         String url = baseUrl + tc.getEndpoint();
         if (tc.getQueryParams() != null && !tc.getQueryParams().isEmpty()) {
             url += "?" + tc.getQueryParamsAsString();
@@ -588,7 +729,7 @@ public class ExecutionService {
         return url;
     }
 
-    private Object resolveBody(TestCase tc, HttpHeaders headers) {
+    private Object resolveBody(TestRequest tc, HttpHeaders headers) {
         if (tc.getFormParams() != null && !tc.getFormParams().isEmpty()) {
             headers.remove(HttpHeaders.CONTENT_TYPE);
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -620,7 +761,7 @@ public class ExecutionService {
                 .filter(p -> name.equals(p.getName())).findFirst().orElse(null);
     }
 
-    private ComparisonConfig resolveComparison(TestCase tc, TestSuite suite) {
+    private ComparisonConfig resolveComparison(TestRequest tc, TestSuite suite) {
         ComparisonConfig global   = suite.getSettings().getComparisonConfig();
         ComparisonConfig override = tc.getComparisonConfig();
         if (override == null) return global;

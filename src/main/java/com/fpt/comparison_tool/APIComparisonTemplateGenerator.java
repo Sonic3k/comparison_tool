@@ -59,13 +59,13 @@ public class APIComparisonTemplateGenerator {
         String name;          // e.g. "User APIs"
         String description;
         String owner;
-        List<Object[]> testCases;
+        List<Object[]> testRequests;
 
-        TestGroup(String name, String description, String owner, List<Object[]> testCases) {
+        TestGroup(String name, String description, String owner, List<Object[]> testRequests) {
             this.name = name;
             this.description = description;
             this.owner = owner;
-            this.testCases = testCases;
+            this.testRequests = testRequests;
         }
 
         String sheetName() {
@@ -316,9 +316,9 @@ public class APIComparisonTemplateGenerator {
         }
 
         // ── Rows 7+: Test cases ───────────────────────────────────────────────
-        for (int i = 0; i < group.testCases.size(); i++) {
+        for (int i = 0; i < group.testRequests.size(); i++) {
             Row row = sheet.createRow(7 + i);
-            Object[] tc = group.testCases.get(i);
+            Object[] tc = group.testRequests.get(i);
             for (int j = 0; j < tc.length; j++) {
                 Cell cell = row.createCell(j);
                 cell.setCellValue(tc[j].toString());

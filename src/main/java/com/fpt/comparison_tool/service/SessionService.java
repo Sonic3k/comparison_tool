@@ -19,6 +19,7 @@ public class SessionService implements Serializable {
     }
 
     public void loadSuite(TestSuite suite) {
+        if (suite != null) suite.normalize();
         this.testSuite = suite;
         this.progress.reset();
     }

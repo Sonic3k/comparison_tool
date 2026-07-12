@@ -207,7 +207,7 @@ public class JmeterExporter {
         buildAuthHeaderManager(x, auth);
         buildHttpDefaults(x, pu);
 
-        for (TestCase tc : orderByPhase(nullSafe(group.getTestCases()))) {
+        for (TestRequest tc : orderByPhase(nullSafe(group.getTestRequests()))) {
             buildHttpSampler(x, tc, pu);
         }
 
@@ -250,7 +250,7 @@ public class JmeterExporter {
 
     // ─── HTTP Sampler ─────────────────────────────────────────────────────────
 
-    private void buildHttpSampler(Xml x, TestCase tc, ParsedUrl pu) {
+    private void buildHttpSampler(Xml x, TestRequest tc, ParsedUrl pu) {
         String method  = tc.getMethod() != null ? tc.getMethod().name() : "GET";
         String path    = pu.basePath + notBlank(tc.getEndpoint(), "");
         String qs      = tc.getQueryParamsAsString();
@@ -276,7 +276,7 @@ public class JmeterExporter {
         x.close("hashTree");
     }
 
-    private void buildBody(Xml x, TestCase tc) {
+    private void buildBody(Xml x, TestRequest tc) {
         List<Param> fp  = nullSafe(tc.getFormParams());
         String      jb  = tc.getJsonBody();
 
@@ -318,7 +318,7 @@ public class JmeterExporter {
         x.close("elementProp");
     }
 
-    private void buildPerRequestHeaders(Xml x, TestCase tc) {
+    private void buildPerRequestHeaders(Xml x, TestRequest tc) {
         if (tc.getHeaders() == null || tc.getHeaders().isBlank()) return;
         List<String[]> parsed = new ArrayList<>();
         for (String line : tc.getHeaders().split("\\n")) {
@@ -361,8 +361,8 @@ public class JmeterExporter {
                 .findFirst().orElse(null);
     }
 
-    private List<TestCase> orderByPhase(List<TestCase> tcs) {
-        List<TestCase> result = new ArrayList<>();
+    private List<TestRequest> orderByPhase(List<TestRequest> tcs) {
+        List<TestRequest> result = new ArrayList<>();
         result.addAll(tcs.stream().filter(tc -> tc.getPhase() == Phase.SETUP).collect(Collectors.toList()));
         result.addAll(tcs.stream().filter(tc -> tc.getPhase() == null || tc.getPhase() == Phase.TEST).collect(Collectors.toList()));
         result.addAll(tcs.stream().filter(tc -> tc.getPhase() == Phase.TEARDOWN).collect(Collectors.toList()));

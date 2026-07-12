@@ -285,7 +285,7 @@ public class APIComparisonTemplateGeneratorBK {
         }
         
         // Test case data with integrated results
-        Object[][] testCases = {
+        Object[][] testRequests = {
             {
                 // Test Case Definition (ID, Group, Name, Description, Enabled, Method, Endpoint, Query Params, Form Params, JSON Body, Headers, Author)
                 "TC001", "User APIs", "Get User Profile", "Retrieve user profile information by user ID",
@@ -393,11 +393,11 @@ public class APIComparisonTemplateGeneratorBK {
         };
         
         // Populate test case data
-        for (int i = 0; i < testCases.length; i++) {
+        for (int i = 0; i < testRequests.length; i++) {
             Row row = sheet.createRow(i + 2); // Start from row 2 (after headers)
-            for (int j = 0; j < testCases[i].length; j++) {
+            for (int j = 0; j < testRequests[i].length; j++) {
                 Cell cell = row.createCell(j);
-                cell.setCellValue(testCases[i][j].toString());
+                cell.setCellValue(testRequests[i][j].toString());
             }
         }
         

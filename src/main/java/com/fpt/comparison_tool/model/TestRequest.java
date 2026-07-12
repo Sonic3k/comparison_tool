@@ -7,10 +7,19 @@ import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TestCase {
+public class TestRequest {
 
     @JacksonXmlProperty(isAttribute = true)
     private String id;
+
+    /**
+     * The logical Test Case this request belongs to (references a
+     * TestCaseDef.id in the owning group). Multiple requests may share the
+     * same testCaseId — together they form one test case. Defaults to the
+     * request's own id (1 request : 1 test case) via TestGroup.normalize().
+     */
+    @JacksonXmlProperty(isAttribute = true)
+    private String testCaseId;
 
     @JacksonXmlProperty(isAttribute = true)
     private String name;
@@ -59,7 +68,7 @@ public class TestCase {
     private AutomationConfig automationConfig;
     private TestResult result;
 
-    public TestCase() {
+    public TestRequest() {
         this.enabled = true;
         this.verificationMode = VerificationMode.COMPARISON;
         this.phase = Phase.TEST;
@@ -68,7 +77,7 @@ public class TestCase {
         this.result = new TestResult();
     }
 
-    public TestCase(String id, String name, String description, boolean enabled,
+    public TestRequest(String id, String name, String description, boolean enabled,
                     HttpMethod method, String endpoint, String author) {
         this.id = id;
         this.name = name;
@@ -85,13 +94,14 @@ public class TestCase {
     }
 
     // ── Fluent setters ─────────────────────────────────────────────────────────
-    public TestCase withQueryParams(List<Param> p)               { this.queryParams = p;       return this; }
-    public TestCase withFormParams(List<Param> p)                { this.formParams = p;        return this; }
-    public TestCase withJsonBody(String b)                       { this.jsonBody = b;          return this; }
-    public TestCase withHeaders(String h)                        { this.headers = h;           return this; }
-    public TestCase withComparison(ComparisonConfig c)           { this.comparisonConfig = c;  return this; }
-    public TestCase withAutomation(AutomationConfig a)           { this.automationConfig = a;  return this; }
-    public TestCase withResult(TestResult r)                     { this.result = r;            return this; }
+    public TestRequest withTestCaseId(String tcId)                  { this.testCaseId = tcId;     return this; }
+    public TestRequest withQueryParams(List<Param> p)               { this.queryParams = p;       return this; }
+    public TestRequest withFormParams(List<Param> p)                { this.formParams = p;        return this; }
+    public TestRequest withJsonBody(String b)                       { this.jsonBody = b;          return this; }
+    public TestRequest withHeaders(String h)                        { this.headers = h;           return this; }
+    public TestRequest withComparison(ComparisonConfig c)           { this.comparisonConfig = c;  return this; }
+    public TestRequest withAutomation(AutomationConfig a)           { this.automationConfig = a;  return this; }
+    public TestRequest withResult(TestResult r)                     { this.result = r;            return this; }
 
     // ── Excel helpers ──────────────────────────────────────────────────────────
     @JsonIgnore
@@ -114,6 +124,9 @@ public class TestCase {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
+    public String getTestCaseId() { return testCaseId; }
+    public void setTestCaseId(String testCaseId) { this.testCaseId = testCaseId; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

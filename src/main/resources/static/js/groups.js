@@ -1,6 +1,6 @@
 // ─── Group Grid ───────────────────────────────────────────────────────────────
 function gStats(group) {
-  const cases = (group.testCases || []).filter(tc => tc.enabled);
+  const cases = (group.testRequests || []).filter(tc => tc.enabled);
   return {
     total:  cases.length,
     passed: cases.filter(tc => tc.result?.status === 'passed').length,
@@ -59,7 +59,7 @@ function renderSuiteSummary(groups) {
 
   let total = 0, passed = 0, failed = 0, error = 0;
   for (const grp of groups) {
-    for (const tc of (grp.testCases || [])) {
+    for (const tc of (grp.testRequests || [])) {
       if (tc.enabled === false) continue;
       total++;
       const s = tc.result?.status;
@@ -196,7 +196,7 @@ function modeBadge(mode) {
 
 function renderDetailCases(grp) {
   document.getElementById('detailCasesTable').innerHTML =
-    (grp.testCases || []).map(tc => {
+    (grp.testRequests || []).map(tc => {
       const res = tc.result || {}, st = res.status || 'pending';
       const disabled = tc.enabled === false;
       const mode = tc.verificationMode || 'comparison';
@@ -295,7 +295,7 @@ async function toggleCase(groupName, caseId) {
   const res = await api('PATCH', `/groups/${encodeURIComponent(groupName)}/cases/${encodeURIComponent(caseId)}/toggle`);
   if (res.success) {
     const grp = suite.testGroups.find(g => g.name === groupName);
-    const tc  = grp?.testCases?.find(c => c.id === caseId);
+    const tc  = grp?.testRequests?.find(c => c.id === caseId);
     if (tc) tc.enabled = res.data.enabled;
     renderDetailCases(grp);
     renderDetailStats(grp);
@@ -353,7 +353,7 @@ function updateModeUI() {
 
 function editCase(groupName, caseId) {
   const grp = suite.testGroups.find(g => g.name === groupName);
-  const tc  = grp?.testCases?.find(c => c.id === caseId);
+  const tc  = grp?.testRequests?.find(c => c.id === caseId);
   if (tc) showCaseModal(groupName, tc);
 }
 
@@ -398,10 +398,10 @@ async function saveTestCase() {
 
   const grp = suite.testGroups.find(g => g.name === groupName);
   if (isEdit) {
-    const idx = grp.testCases.findIndex(c => c.id === tc.id);
-    if (idx >= 0) grp.testCases[idx] = { ...grp.testCases[idx], ...tc };
+    const idx = grp.testRequests.findIndex(c => c.id === tc.id);
+    if (idx >= 0) grp.testRequests[idx] = { ...grp.testRequests[idx], ...tc };
   } else {
-    grp.testCases.push(tc);
+    grp.testRequests.push(tc);
   }
   closeModal('caseModal');
   renderDetailCases(grp);
@@ -415,7 +415,7 @@ async function deleteCase(groupName, caseId) {
   const res = await api('DELETE', `/groups/${encodeURIComponent(groupName)}/cases/${encodeURIComponent(caseId)}`);
   if (res.success) {
     const grp = suite.testGroups.find(g => g.name === groupName);
-    grp.testCases = grp.testCases.filter(c => c.id !== caseId);
+    grp.testRequests = grp.testRequests.filter(c => c.id !== caseId);
     renderDetailCases(grp);
     renderDetailStats(grp);
     renderGroupGrid(suite.testGroups);
@@ -437,8 +437,8 @@ async function rerunCase(groupName, caseId, btnEl) {
     // Replace TC in local suite + re-render only this group's detail rows
     const grp = suite.testGroups.find(g => g.name === groupName);
     if (grp) {
-      const idx = grp.testCases.findIndex(c => c.id === caseId);
-      if (idx >= 0) grp.testCases[idx] = updated;
+      const idx = grp.testRequests.findIndex(c => c.id === caseId);
+      if (idx >= 0) grp.testRequests[idx] = updated;
       renderDetailCases(grp);
       renderDetailStats(grp);
     }
@@ -516,7 +516,7 @@ function renderResultsPanel() {
   let total = 0, passed = 0, failed = 0, error = 0;
 
   for (const grp of groups) {
-    for (const tc of (grp.testCases || [])) {
+    for (const tc of (grp.testRequests || [])) {
       if (tc.enabled === false) continue;
       total++;
       const s = tc.result?.status;
@@ -528,8 +528,8 @@ function renderResultsPanel() {
 
   // Debug — remove after fix
   console.log('[Results] groups:', groups.length, 'total:', total, 'pass:', passed, 'fail:', failed, 'err:', error);
-  if (groups[0]?.testCases?.[0]) {
-    const tc0 = groups[0].testCases[0];
+  if (groups[0]?.testRequests?.[0]) {
+    const tc0 = groups[0].testRequests[0];
     console.log('[Results] sample TC:', tc0.id, 'result:', JSON.stringify(tc0.result));
   }
   const executed = passed + failed + error;
@@ -562,7 +562,7 @@ function renderResultsPanel() {
 
   // Per-group breakdown
   breakdown.innerHTML = groups.map(grp => {
-    const cases = (grp.testCases || []).filter(tc => tc.enabled !== false);
+    const cases = (grp.testRequests || []).filter(tc => tc.enabled !== false);
     const gPass  = cases.filter(tc => tc.result?.status === 'passed').length;
     const gFail  = cases.filter(tc => tc.result?.status === 'failed').length;
     const gError = cases.filter(tc => tc.result?.status === 'error').length;

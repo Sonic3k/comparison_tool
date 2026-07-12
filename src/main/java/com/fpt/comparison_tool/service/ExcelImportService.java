@@ -12,35 +12,40 @@ import java.util.List;
 /**
  * Parses an Excel workbook into a TestSuite.
  *
- * TC sheet column layout (0-based):
+ * Current TC sheet column layout — 29 columns (0-based):
  *   GREEN  0  ID
- *          1  Name
- *          2  Description
- *          3  Enabled
- *          4  Mode (verification mode)
- *          5  Phase (setup / test / teardown)
- *          6  Method
- *          7  Endpoint
- *          8  Query Params
- *          9  Form Params
- *         10  JSON Body
- *         11  Headers
- *         12  Author
- *         13  Extract Variables
- *   TEAL  14  Ignore Fields
- *         15  Ignore Array Order
- *         16  Compare Error Responses
- *         17  Numeric Tolerance
- *         18  Case Sensitive
- *   PURPLE 19  Expected Status
- *          20  Expected Body
- *          21  Expected Headers
- *          22  Max Response Time
- *   RED   23  Overall Status
- *         24  Mode Run
- *         25  Comparison Result
- *         26  Assertion Result
- *         27  Executed At
+ *          1  Test Case ID   ← logical test case this request belongs to
+ *          2  Name
+ *          3  Description
+ *          4  Enabled
+ *          5  Mode (verification mode)
+ *          6  Phase (setup / test / teardown)
+ *          7  Method
+ *          8  Endpoint
+ *          9  Query Params
+ *         10  Form Params
+ *         11  JSON Body
+ *         12  Headers
+ *         13  Author
+ *         14  Extract Variables
+ *   TEAL  15  Ignore Fields
+ *         16  Ignore Array Order
+ *         17  Compare Error Responses
+ *         18  Numeric Tolerance
+ *         19  Case Sensitive
+ *   PURPLE 20  Expected Status
+ *          21  Expected Body
+ *          22  Expected Headers
+ *          23  Max Response Time
+ *   RED   24  Overall Status
+ *         25  Mode Run
+ *         26  Comparison Result
+ *         27  Assertion Result
+ *         28  Executed At
+ *
+ * Legacy 28-column workbooks (no "Test Case ID" column) are still accepted:
+ * the layout is auto-detected from the header row (row index 6, column 1) and
+ * each request defaults to its own test case (testCaseId = ID) on normalize.
  */
 @Service
 public class ExcelImportService {
@@ -186,40 +191,55 @@ public class ExcelImportService {
             }
         }
 
+        // Layout detection: new 29-col sheets have "Test Case ID" as the
+        // second header (row index 6, col 1); legacy 28-col sheets have "Name".
+        Row headerRow = sheet.getRow(6);
+        boolean newLayout = headerRow != null
+                && "test case id".equalsIgnoreCase(cell(headerRow, 1));
+
         // Data starts at row 8 (0-based index 7)
         for (int r = 7; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null || cell(row, 0).isEmpty()) continue;
-            group.addTestCase(parseTestCaseRow(row));
+            group.addTestRequest(parseTestRequestRow(row, newLayout));
         }
+        group.normalize();
         return group;
     }
 
-    private TestCase parseTestCaseRow(Row row) {
-        TestCase tc = new TestCase();
+    private TestRequest parseTestRequestRow(Row row, boolean newLayout) {
+        TestRequest tc = new TestRequest();
 
-        // ── GREEN: cols 0-13 ─────────────────────────────────────────────────
+        // Offset: new layout inserts "Test Case ID" at column 1,
+        // shifting everything after ID by +1.
+        int o = newLayout ? 1 : 0;
+
+        // ── GREEN ────────────────────────────────────────────────────────────
         tc.setId(cell(row, 0));
-        tc.setName(cell(row, 1));
-        tc.setDescription(cell(row, 2));
-        tc.setEnabled(Boolean.parseBoolean(cell(row, 3)));
-        tc.setVerificationMode(VerificationMode.from(cell(row, 4)));
-        tc.setPhase(Phase.from(cell(row, 5)));
-        tc.setMethod(parseEnum(HttpMethod.class, cell(row, 6), HttpMethod.GET));
-        tc.setEndpoint(cell(row, 7));
-        tc.setQueryParams(parseParams(cell(row, 8)));
-        tc.setFormParams(parseParams(cell(row, 9)));
-        tc.setJsonBody(cell(row, 10));
-        tc.setHeaders(cell(row, 11));
-        tc.setAuthor(cell(row, 12));
-        tc.setExtractVariables(cell(row, 13));
+        if (newLayout) {
+            String tcId = cell(row, 1);
+            tc.setTestCaseId(tcId.isEmpty() ? null : tcId);   // null → normalize() defaults to own id
+        }
+        tc.setName(cell(row, 1 + o));
+        tc.setDescription(cell(row, 2 + o));
+        tc.setEnabled(Boolean.parseBoolean(cell(row, 3 + o)));
+        tc.setVerificationMode(VerificationMode.from(cell(row, 4 + o)));
+        tc.setPhase(Phase.from(cell(row, 5 + o)));
+        tc.setMethod(parseEnum(HttpMethod.class, cell(row, 6 + o), HttpMethod.GET));
+        tc.setEndpoint(cell(row, 7 + o));
+        tc.setQueryParams(parseParams(cell(row, 8 + o)));
+        tc.setFormParams(parseParams(cell(row, 9 + o)));
+        tc.setJsonBody(cell(row, 10 + o));
+        tc.setHeaders(cell(row, 11 + o));
+        tc.setAuthor(cell(row, 12 + o));
+        tc.setExtractVariables(cell(row, 13 + o));
 
-        // ── TEAL: cols 14-18 ─────────────────────────────────────────────────
-        String ignoreFields = cell(row, 14);
-        String ignoreOrder  = cell(row, 15);
-        String cmpErrors    = cell(row, 16);
-        String numTol       = cell(row, 17);
-        String caseSens     = cell(row, 18);
+        // ── TEAL ─────────────────────────────────────────────────────────────
+        String ignoreFields = cell(row, 14 + o);
+        String ignoreOrder  = cell(row, 15 + o);
+        String cmpErrors    = cell(row, 16 + o);
+        String numTol       = cell(row, 17 + o);
+        String caseSens     = cell(row, 18 + o);
 
         if (!ignoreFields.isEmpty() || !ignoreOrder.isEmpty() || !cmpErrors.isEmpty()
                 || !numTol.isEmpty() || !caseSens.isEmpty()) {
@@ -232,11 +252,11 @@ public class ExcelImportService {
             tc.setComparisonConfig(cmp);
         }
 
-        // ── PURPLE: cols 19-22 ───────────────────────────────────────────────
-        String expStatus  = cell(row, 19);
-        String expBody    = cell(row, 20);
-        String expHeaders = cell(row, 21);
-        String maxRt      = cell(row, 22);
+        // ── PURPLE ───────────────────────────────────────────────────────────
+        String expStatus  = cell(row, 19 + o);
+        String expBody    = cell(row, 20 + o);
+        String expHeaders = cell(row, 21 + o);
+        String maxRt      = cell(row, 22 + o);
 
         if (!expStatus.isEmpty() || !expBody.isEmpty() || !expHeaders.isEmpty() || !maxRt.isEmpty()) {
             AutomationConfig auto = new AutomationConfig();
@@ -247,15 +267,15 @@ public class ExcelImportService {
             tc.setAutomationConfig(auto);
         }
 
-        // ── RED: cols 23-27 ──────────────────────────────────────────────────
-        String overallStatus = cell(row, 23);
+        // ── RED ──────────────────────────────────────────────────────────────
+        String overallStatus = cell(row, 23 + o);
         if (!overallStatus.isEmpty()) {
             TestResult result = new TestResult();
             result.setStatus(parseEnum(ExecutionStatus.class, overallStatus.toUpperCase(), ExecutionStatus.PENDING));
-            result.setModeRun(cell(row, 24));
-            result.setComparisonResult(cell(row, 25));
-            result.setAssertionResult(cell(row, 26));
-            result.setExecutedAt(cell(row, 27));
+            result.setModeRun(cell(row, 24 + o));
+            result.setComparisonResult(cell(row, 25 + o));
+            result.setAssertionResult(cell(row, 26 + o));
+            result.setExecutedAt(cell(row, 27 + o));
             tc.setResult(result);
         }
 

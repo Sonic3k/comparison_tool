@@ -270,46 +270,74 @@ public class PostmanExporter {
             if (group.getDescription() != null && !group.getDescription().isBlank()) {
                 folder.put("description", group.getDescription());
             }
-            folder.set("item", buildGroupItems(nullSafe(group.getTestCases())));
+            folder.set("item", buildGroupItems(nullSafe(group.getTestRequests())));
             folders.add(folder);
         }
         return folders;
     }
 
-    private ArrayNode buildGroupItems(List<TestCase> testCases) {
-        boolean hasMultiplePhases = testCases.stream()
+    private ArrayNode buildGroupItems(List<TestRequest> testRequests) {
+        boolean hasMultiplePhases = testRequests.stream()
                 .map(tc -> tc.getPhase() != null ? tc.getPhase() : Phase.TEST)
                 .collect(Collectors.toSet())
                 .size() > 1;
 
-        if (!hasMultiplePhases) return buildRequests(testCases);
+        if (!hasMultiplePhases) return buildTestItems(testRequests);
 
         ArrayNode items = mapper.createArrayNode();
-        List<TestCase> setup    = byPhase(testCases, Phase.SETUP);
-        List<TestCase> test     = byPhase(testCases, Phase.TEST);
-        List<TestCase> teardown = byPhase(testCases, Phase.TEARDOWN);
+        List<TestRequest> setup    = byPhase(testRequests, Phase.SETUP);
+        List<TestRequest> test     = byPhase(testRequests, Phase.TEST);
+        List<TestRequest> teardown = byPhase(testRequests, Phase.TEARDOWN);
         if (!setup.isEmpty())    items.add(subFolder("Setup",      setup));
-        if (!test.isEmpty())     items.add(subFolder("Test Cases", test));
+        if (!test.isEmpty()) {
+            ObjectNode testFolder = mapper.createObjectNode();
+            testFolder.put("name", "Test Cases");
+            testFolder.set("item", buildTestItems(test));
+            items.add(testFolder);
+        }
         if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown));
         return items;
     }
 
-    private ObjectNode subFolder(String name, List<TestCase> testCases) {
+    /**
+     * TEST-phase items grouped by test case: a test case with several member
+     * requests becomes a sub-folder (requests kept in declared order); a
+     * 1-request test case stays a flat item — avoids one folder per request.
+     */
+    private ArrayNode buildTestItems(List<TestRequest> testRequests) {
+        Map<String, List<TestRequest>> byTc = new LinkedHashMap<>();
+        for (TestRequest tc : testRequests) {
+            String tcId = tc.getTestCaseId() != null && !tc.getTestCaseId().isBlank()
+                    ? tc.getTestCaseId() : tc.getId();
+            byTc.computeIfAbsent(tcId, k -> new ArrayList<>()).add(tc);
+        }
+        ArrayNode items = mapper.createArrayNode();
+        for (Map.Entry<String, List<TestRequest>> e : byTc.entrySet()) {
+            if (e.getValue().size() > 1) {
+                items.add(subFolder(e.getKey(), e.getValue()));
+            } else {
+                items.addAll(buildRequests(e.getValue()));
+            }
+        }
+        return items;
+    }
+
+    private ObjectNode subFolder(String name, List<TestRequest> testRequests) {
         ObjectNode folder = mapper.createObjectNode();
         folder.put("name", name);
-        folder.set("item", buildRequests(testCases));
+        folder.set("item", buildRequests(testRequests));
         return folder;
     }
 
-    private List<TestCase> byPhase(List<TestCase> tcs, Phase phase) {
+    private List<TestRequest> byPhase(List<TestRequest> tcs, Phase phase) {
         return tcs.stream()
                 .filter(tc -> (tc.getPhase() != null ? tc.getPhase() : Phase.TEST) == phase)
                 .collect(Collectors.toList());
     }
 
-    private ArrayNode buildRequests(List<TestCase> testCases) {
+    private ArrayNode buildRequests(List<TestRequest> testRequests) {
         ArrayNode items = mapper.createArrayNode();
-        for (TestCase tc : testCases) {
+        for (TestRequest tc : testRequests) {
             ObjectNode item = mapper.createObjectNode();
             item.put("name", tc.getName() != null ? tc.getName() : tc.getId());
             if (tc.getDescription() != null && !tc.getDescription().isBlank()) {
@@ -321,7 +349,7 @@ public class PostmanExporter {
         return items;
     }
 
-    private ObjectNode buildRequest(TestCase tc) {
+    private ObjectNode buildRequest(TestRequest tc) {
         ObjectNode request = mapper.createObjectNode();
         request.put("method", tc.getMethod() != null ? tc.getMethod().name() : "GET");
         request.set("url",    buildUrl(tc));
@@ -331,7 +359,7 @@ public class PostmanExporter {
         return request;
     }
 
-    private ObjectNode buildUrl(TestCase tc) {
+    private ObjectNode buildUrl(TestRequest tc) {
         String      endpoint = tc.getEndpoint() != null ? tc.getEndpoint() : "";
         List<Param> qp       = nullSafe(tc.getQueryParams());
         String      rawQs    = tc.getQueryParamsAsString();
@@ -377,7 +405,7 @@ public class PostmanExporter {
         return headers;
     }
 
-    private ObjectNode buildBody(TestCase tc) {
+    private ObjectNode buildBody(TestRequest tc) {
         List<Param> formParams = nullSafe(tc.getFormParams());
         String      jsonBody   = tc.getJsonBody();
 
