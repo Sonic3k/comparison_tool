@@ -12,12 +12,12 @@
   <!-- ── Topbar ─────────────────────────────────────────────────────────── -->
   <header id="topbar">
     <div class="brand">
-      <div class="eyebrow">Comparison Console</div>
-      <div class="suite-name" id="suiteName">No suite loaded</div>
+      <span class="eyebrow">Comparison Console</span>
+      <span class="suite-name" id="suiteName">No suite loaded</span>
     </div>
     <div class="env-pair" id="envPair" hidden>
       <span class="chip env-src" id="envSrc">source</span>
-      <span class="arrow">⇢</span>
+      <span class="arrow">→</span>
       <span class="chip env-tgt" id="envTgt">target</span>
     </div>
     <div class="spacer"></div>
@@ -41,20 +41,21 @@
     </div>
     <button class="btn danger" data-act="stop" id="btnStop" hidden>■ Stop</button>
 
-    <button class="btn ghost" data-act="cfg-open" id="btnCfg" hidden title="Suite configuration">⚙</button>
+    <button class="btn ghost" data-act="cfg-open" id="btnCfg" hidden title="Suite configuration">⚙ Config</button>
     <div class="menu-wrap">
       <button class="btn ghost" data-act="menu" data-menu="moreMenu" title="Import / export">⋮</button>
       <div class="menu" id="moreMenu">
+        <button data-act="import-suite">Import suite (xlsx / xml / json)…</button>
+        <button data-act="load-sample">Load sample suite</button>
+        <button data-act="import-group">Import group (json / xml)…</button>
+        <button data-act="grp-new">New group…</button>
+        <div class="sep"></div>
         <a href="/api/export/excel">Export Excel (.xlsx)</a>
         <a href="/api/export/xml">Export XML</a>
         <a href="/api/export/json">Export JSON</a>
         <a href="/api/export/postman?mode=both">Export Postman (zip)</a>
         <a href="/api/export/bruno?mode=both">Export Bruno (zip)</a>
         <a href="/api/export/jmeter?mode=both">Export JMeter (zip)</a>
-        <div class="sep"></div>
-        <button data-act="import-suite">Import suite (xlsx / xml / json)…</button>
-        <button data-act="import-group">Import group (json / xml)…</button>
-        <button data-act="grp-new">New group…</button>
         <div class="sep"></div>
         <a href="/api/export/template/excel">Excel template</a>
         <a href="/api/export/template/xml">XML template</a>
@@ -68,12 +69,12 @@
 
   <!-- ── Run rail ───────────────────────────────────────────────────────── -->
   <div id="rail-wrap">
-    <canvas id="rail" height="22"></canvas>
+    <canvas id="rail" height="7"></canvas>
     <div id="rail-meta"></div>
   </div>
 
   <!-- ── Workspace ──────────────────────────────────────────────────────── -->
-  <div id="layout" hidden>
+  <div id="layout">
     <aside id="side">
       <div class="side-head">
         <input type="search" id="grp-search" placeholder="Filter groups…" autocomplete="off"/>
@@ -89,6 +90,17 @@
     </aside>
 
     <main id="main">
+      <div id="nosuite" hidden>
+        No suite loaded — import a file or start with the sample.
+        <button class="btn sm" data-act="import-suite">📄 Import file</button>
+        <button class="btn sm primary" data-act="load-sample">⚡ Load sample suite</button>
+        <span class="links">
+          <a href="/api/export/template/excel">Excel template</a>
+          <a href="/api/export/template/xml">XML template</a>
+          <a href="/ai-testcase-guide.md" target="_blank">AI guide</a>
+          <a href="/legacy/index.html">Legacy UI</a>
+        </span>
+      </div>
       <div id="filterbar"></div>
       <div id="bulkbar"></div>
       <div id="table-wrap">
@@ -98,7 +110,7 @@
               <th style="width:34px"><input type="checkbox" id="selAll" title="Select all visible"/></th>
               <th style="width:100px">Status</th>
               <th>Test case</th>
-              <th style="width:120px">Requests</th>
+              <th style="width:130px">Requests</th>
               <th style="width:150px">Executed</th>
               <th style="width:110px"></th>
             </tr>
@@ -109,24 +121,6 @@
     </main>
 
     <aside id="drawer"></aside>
-  </div>
-
-  <!-- ── Empty state ────────────────────────────────────────────────────── -->
-  <div id="empty" hidden>
-    <div class="empty-card">
-      <div class="eyebrow">Comparison Console</div>
-      <h2>Load a test suite to begin</h2>
-      <p>Import a suite file — the console tracks every request live as it runs against source and target.</p>
-      <div class="drop" id="dropzone" tabindex="0" role="button">
-        Drop a <b>.xlsx</b> / <b>.xml</b> / <b>.json</b> suite file here<br/>or click to choose
-      </div>
-      <div class="empty-links">
-        <a href="/api/export/template/excel">Excel template</a>
-        <a href="/api/export/template/xml">XML template</a>
-        <a href="/ai-testcase-guide.md" target="_blank">AI test-case guide</a>
-        <a href="/legacy/index.html">Legacy UI</a>
-      </div>
-    </div>
   </div>
 
   <!-- ── Live feed ──────────────────────────────────────────────────────── -->

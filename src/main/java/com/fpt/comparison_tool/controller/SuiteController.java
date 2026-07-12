@@ -35,6 +35,14 @@ public class SuiteController {
         return ResponseEntity.ok(ApiResponse.ok(session.getTestSuite()));
     }
 
+    /** Loads the built-in demo suite into the session — one-click start without a file. */
+    @PostMapping("/sample")
+    public ResponseEntity<ApiResponse<TestSuite>> loadSample() {
+        TestSuite suite = com.fpt.comparison_tool.generator.SampleDataBuilder.build();
+        session.loadSuite(suite);
+        return ResponseEntity.ok(ApiResponse.ok("Sample suite loaded", suite));
+    }
+
     @PostMapping("/import")
     public ResponseEntity<ApiResponse<TestSuite>> importFile(
             @RequestParam("file") MultipartFile file) {

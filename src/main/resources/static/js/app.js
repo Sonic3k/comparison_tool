@@ -157,8 +157,8 @@ function tcLastRun(tc) {
 /* ── render: topbar ───────────────────────────────────────────────────────── */
 function renderTop() {
   const has = !!S.suite;
-  $('#layout').hidden = !has;
-  $('#empty').hidden  = has;
+  $('#nosuite').hidden = has;
+  $('#tct').style.display = has ? '' : 'none';
   $('#runWrap').hidden = !has || S.live.on;
   $('#btnStop').hidden = !S.live.on;
   $('#btnCfg').hidden = !has;
@@ -190,7 +190,7 @@ function renderStats() {
 /* ── render: sidebar ──────────────────────────────────────────────────────── */
 function renderSide() {
   const list = $('#group-list');
-  if (!S.suite) { list.innerHTML = ''; return; }
+  if (!S.suite) { list.innerHTML = '<div class="side-empty">No suite loaded</div>'; return; }
   const q = S.ui.gq.toLowerCase();
   const total = suiteCounts();
   let html = grpRow('*', 'All groups', total, S.ui.group === '*', true);
@@ -218,7 +218,7 @@ function grpRow(id, name, c, active, isAll, disabled) {
 
 /* ── render: filter bar + bulk bar ────────────────────────────────────────── */
 function renderFilter() {
-  if (!S.suite) return;
+  if (!S.suite) { $('#filterbar').innerHTML = ''; renderBulk(); return; }
   const scoped = S.ui.group === '*' ? groups() : [findGroup(S.ui.group)].filter(Boolean);
   const c = { all: 0, passed: 0, failed: 0, error: 0, pending: 0 };
   for (const g of scoped) {
@@ -278,8 +278,7 @@ function renderTable() {
     const tcs = tcList(g).filter(tc => matchesFilter(g.name, tc));
     if (!tcs.length) continue;
     if (S.ui.group === '*') {
-      html += `<tr><td colspan="6" style="padding:10px 12px 4px">
-        <span style="font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)">${esc(g.name)}</span>
+      html += `<tr class="grp-head"><td colspan="6">${esc(g.name)}
         <span class="badge-n" style="margin-left:8px">${tcs.length}</span></td></tr>`;
     }
     for (const tc of tcs) {
@@ -572,7 +571,7 @@ function drawRail() {
   wrap.classList.add('visible');
   const cv = $('#rail');
   const dpr = window.devicePixelRatio || 1;
-  const W = cv.clientWidth * dpr, H = 22 * dpr;
+  const W = cv.clientWidth * dpr, H = 7 * dpr;
   if (cv.width !== W) cv.width = W;
   if (cv.height !== H) cv.height = H;
   const ctx = cv.getContext('2d');
@@ -1179,6 +1178,17 @@ async function uploadSuite(file) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+async function loadSample() {
+  try {
+    const j = await api('POST', '/api/suite/sample');
+    toast((j && j.message) || 'Sample suite loaded', 'ok');
+    S.ui.group = '*'; S.ui.q = ''; S.ui.sel.clear(); S.ui.open.clear(); S.ui.drawer = null;
+    S.live.plan = []; S.live.overlay.clear(); S.live.prog = null; S.live.state = 'idle'; S.live.flash = [];
+    await reloadSuite();
+    drawRail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
 function importGroupModal(file) {
   const ext = file.name.toLowerCase().endsWith('.xml') ? 'xml' : 'json';
   modal({
@@ -1315,6 +1325,7 @@ function onDocClick(e) {
     case 'req-new': newRequestModal(); break;
     case 'grp-new': newGroupModal(); break;
     case 'cfg-open': cfgModal(); break;
+    case 'load-sample': loadSample(); break;
     case 'import-suite': $('#fileSuite').click(); break;
     case 'import-group': $('#fileGroup').click(); break;
     case 'clear-suite': clearSuiteConfirm(); break;
@@ -1371,12 +1382,14 @@ function bindStatic() {
     if (f) importGroupModal(f);
   });
 
-  const dz = $('#dropzone');
-  dz.addEventListener('click', () => $('#fileSuite').click());
-  dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#fileSuite').click(); } });
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); uploadSuite(e.dataTransfer.files[0]); });
+  // Drop a suite file anywhere in the window while no suite is loaded
+  document.addEventListener('dragover', e => { if (!S.suite) e.preventDefault(); });
+  document.addEventListener('drop', e => {
+    if (S.suite) return;
+    e.preventDefault();
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) uploadSuite(f);
+  });
 }
 
 /* ── boot ─────────────────────────────────────────────────────────────────── */
