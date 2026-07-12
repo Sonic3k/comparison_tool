@@ -13,3 +13,5 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+# javac crash/parameter dumps (sandbox syntax checks)
+javac.*.args
