@@ -264,3 +264,18 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .tc-head-row td { background: #eff6ff; border-top: 2px solid #bfdbfe; cursor: pointer; padding-top: 7px; padding-bottom: 7px; }
 .tc-head-row:hover td { background: #e0edff; }
 .tc-member td:first-child { border-left: 3px solid #bfdbfe; }
+
+/* ─── Overflow fixes ─────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+.cell-id { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-endpoint { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-card-header { align-items: flex-start; gap: 8px; }
+.group-card-header > div:first-child { min-width: 0; flex: 1; }
+.group-card-name { overflow-wrap: anywhere; }
+.group-card-header > div:last-child { flex-shrink: 0; }
+
+/* ─── Busy overlay (imports & long calls) ────────────────────── */
+.busy-overlay { position: fixed; inset: 0; background: rgba(255,255,255,.65); z-index: 300; display: flex; align-items: center; justify-content: center; }
+.busy-box { background: #fff; border: 1px solid var(--gray-border); box-shadow: 0 8px 30px rgba(0,0,0,.15); border-radius: 10px; padding: 16px 24px; font-size: 14px; font-weight: 600; display: flex; gap: 12px; align-items: center; }
+.spinner { width: 18px; height: 18px; border: 3px solid #dbeafe; border-top-color: var(--blue); border-radius: 50%; animation: rot .8s linear infinite; flex-shrink: 0; }
+@keyframes rot { to { transform: rotate(360deg); } }

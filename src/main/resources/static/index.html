@@ -285,7 +285,7 @@
           <thead><tr>
             <th style="width:28px"></th>
             <th>ID</th><th>Name</th><th>Method</th><th>Endpoint</th>
-            <th>Mode</th><th>Status</th><th>Target</th><th style="width:120px"></th>
+            <th>Mode</th><th>Status</th><th>Target</th><th style="width:150px"></th>
           </tr></thead>
           <tbody id="detailCasesTable"></tbody>
         </table>
@@ -646,6 +646,10 @@
       <button class="btn btn-primary" onclick="closeModal('execDoneModal'); showPanel('results')">📊 View global results</button>
     </div>
   </div>
+</div>
+
+<div class="busy-overlay" id="busyOverlay" style="display:none">
+  <div class="busy-box"><span class="spinner"></span><span id="busyMsg">Working…</span></div>
 </div>
 
 <script src="js/core.js"></script>

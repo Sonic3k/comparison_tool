@@ -285,16 +285,16 @@ function caseRowHtml(grp, tc, groupKey) {
   const disabled = tc.enabled === false;
   const mode = tc.verificationMode || 'comparison';
   const memberCls = groupKey ? ` tc-member tcm-${groupKey}` : '';
-  const idPrefix  = groupKey ? '<span style="color:#93c5fd">└ </span>' : '';
+  const open = `openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')`;
   return `
         <tr class="case-row${disabled ? ' case-disabled' : ''}${memberCls}" id="row-${esc(tc.id)}">
-          <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
-          <td class="mono" style="font-weight:600;cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${idPrefix}${esc(tc.id)}</td>
-          <td style="cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
+          <td style="text-align:center;color:#93c5fd;font-size:11px">${groupKey ? '└' : ''}</td>
+          <td class="mono cell-id" style="font-weight:600;cursor:pointer" title="${esc(tc.id)}" onclick="${open}">${esc(tc.id)}</td>
+          <td style="cursor:pointer" onclick="${open}">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
-          <td class="mono" style="color:#6b7280;cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${esc(tc.endpoint || '')}</td>
+          <td class="mono cell-endpoint" style="color:#6b7280;cursor:pointer" title="${esc(tc.endpoint || '')}" onclick="${open}">${esc(tc.endpoint || '')}</td>
           <td>${modeBadge(mode)}</td>
-          <td><span class="bs s-${st}" id="st-${esc(tc.id)}">${st}</span></td>
+          <td style="cursor:pointer" onclick="${open}"><span class="bs s-${st}" id="st-${esc(tc.id)}">${st}</span></td>
           <td class="mono">${esc(res.targetStatus || '')}</td>
           <td onclick="event.stopPropagation()" style="white-space:nowrap">
             <button class="btn btn-xs ${disabled ? 'toggle-off' : 'toggle-on'}"
@@ -304,12 +304,9 @@ function caseRowHtml(grp, tc, groupKey) {
             </button>
             <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this request only (no setup, no variables)">↻</button>
             <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
-            <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')">Edit</button>
-            <button class="btn btn-outline btn-xs" style="color:var(--red);margin-left:3px" onclick="deleteCase('${esc(grp.name)}','${esc(tc.id)}')">✕</button>
+            <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')" title="Edit">✎</button>
+            <button class="btn btn-outline btn-xs" style="color:var(--red);margin-left:3px" onclick="deleteCase('${esc(grp.name)}','${esc(tc.id)}')" title="Delete">✕</button>
           </td>
-        </tr>
-        <tr class="expand-row${memberCls}" id="exp-${esc(tc.id)}">
-          <td colspan="9" class="expand-cell">${renderExpand(tc)}</td>
         </tr>`;
 }
 
@@ -322,67 +319,6 @@ function toggleTcGroup(key) {
   if (arr) arr.textContent = collapse ? '▶' : '▼';
 }
 
-
-function renderExpand(tc) {
-  const res = tc.result || {};
-  const mode = res.modeRun || tc.verificationMode || 'comparison';
-
-  // Comparison block
-  const hasCmp = mode === 'comparison' || mode === 'both';
-  const diffs = (res.comparisonResult || '').split('\n').filter(Boolean);
-  const cmpBlock = hasCmp ? `
-    <div style="margin-bottom:12px">
-      <div class="expand-label" style="color:#0369a1">⇄ Comparison Result
-        ${res.sourceStatus ? `<span style="color:#6b7280;font-weight:400;font-size:11px">· src ${res.sourceStatus} / tgt ${res.targetStatus || '—'}</span>` : ''}
-      </div>
-      ${diffs.length
-        ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>`
-        : (hasCmp && res.status ? `<div style="color:#059669;font-size:12px">✓ No differences</div>` : '')}
-      ${res.sourceResponse || res.targetResponse ? `
-        <div class="expand-grid" style="margin-top:8px">
-          <div>
-            <div class="expand-label">Source Response (${esc(res.sourceStatus || '—')})</div>
-            <div class="expand-body">${esc(res.sourceResponse || '—')}</div>
-          </div>
-          <div>
-            <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
-            <div class="expand-body">${esc(res.targetResponse || '—')}</div>
-          </div>
-        </div>` : ''}
-    </div>` : '';
-
-  // Automation block
-  const hasAuto = mode === 'automation' || mode === 'both';
-  const assertLines = (res.assertionResult || '').split('\n').filter(Boolean);
-  const autoBlock = hasAuto ? `
-    <div style="margin-bottom:12px">
-      <div class="expand-label" style="color:#7c3aed">✓ Assertion Result
-        ${res.targetStatus ? `<span style="color:#6b7280;font-weight:400;font-size:11px">· tgt ${res.targetStatus}</span>` : ''}
-      </div>
-      ${assertLines.length
-        ? `<div style="font-size:12px;font-family:monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-top:4px;white-space:pre-wrap">${assertLines.map(l => {
-            const fail = l.startsWith('✗');
-            return `<span style="color:${fail ? '#dc2626' : '#059669'}">${esc(l)}</span>`;
-          }).join('\n')}</div>`
-        : (hasAuto && res.status ? `<div style="color:#059669;font-size:12px">✓ All assertions passed</div>` : '')}
-      ${res.targetResponse && !hasCmp ? `
-        <div style="margin-top:8px">
-          <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
-          <div class="expand-body">${esc(res.targetResponse || '—')}</div>
-        </div>` : ''}
-    </div>` : '';
-
-  return `<div>
-    ${cmpBlock}${autoBlock}
-    ${res.executedAt ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px">Executed: ${esc(res.executedAt)}</div>` : ''}
-  </div>`;
-}
-
-function toggleExpand(id) {
-  const row = document.getElementById('exp-' + id); if (!row) return;
-  const open = row.classList.toggle('open');
-  const arr  = document.getElementById('arr-' + id); if (arr) arr.textContent = open ? '▼' : '▶';
-}
 
 // ─── Test Case Toggle ─────────────────────────────────────────────────────────
 async function toggleCase(groupName, caseId) {
@@ -884,7 +820,13 @@ async function importGroupFile(format) {
   fd.append('file', file);
 
   const mode = document.getElementById(modeId).value;
-  const res  = await (await fetch(`/api/groups/import/${format}?mode=${mode}`, { method: 'POST', body: fd })).json();
+  showBusy(`Importing group from "${file.name}"…`);
+  let res;
+  try {
+    res = await (await fetch(`/api/groups/import/${format}?mode=${mode}`, { method: 'POST', body: fd })).json();
+  } finally {
+    hideBusy();
+  }
   if (!res.success) { toast(res.message); return; }
 
   const imported    = res.data;

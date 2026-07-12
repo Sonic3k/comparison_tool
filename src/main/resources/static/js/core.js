@@ -49,6 +49,17 @@ function toast(msg, isErr = false) {
   setTimeout(() => el.remove(), 2800);
 }
 
+function showBusy(msg) {
+  const o = document.getElementById('busyOverlay');
+  if (!o) return;
+  document.getElementById('busyMsg').textContent = msg || 'Working…';
+  o.style.display = 'flex';
+}
+function hideBusy() {
+  const o = document.getElementById('busyOverlay');
+  if (o) o.style.display = 'none';
+}
+
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -103,14 +114,21 @@ async function handleSuiteDrop(event) {
 }
 
 async function importSuiteFile(file) {
-  const res = await uploadFile(file);
-  if (res.success) {
-    suite = res.data;
-    renderSuite();
-    showSuiteView();
-    toast('Imported: ' + (suite.settings?.suiteName || ''));
-  } else {
-    alert('Import failed: ' + res.message);
+  showBusy(`Importing "${file.name}"…`);
+  try {
+    const res = await uploadFile(file);
+    if (res.success) {
+      suite = res.data;
+      renderSuite();
+      showSuiteView();
+      toast('Imported: ' + (suite.settings?.suiteName || ''));
+    } else {
+      alert('Import failed: ' + res.message);
+    }
+  } catch (e) {
+    alert('Import failed: ' + e.message);
+  } finally {
+    hideBusy();
   }
 }
 
