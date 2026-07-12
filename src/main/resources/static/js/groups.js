@@ -769,7 +769,8 @@ function renderResultsPanel() {
       ${badTcs.length ? `<div style="display:flex;flex-direction:column;gap:4px">
         ${badTcs.map(b => {
           const r = b.firstBad.result || {};
-          const diffs = (r.comparisonResult || r.differences || '').split('\n').filter(Boolean);
+          const diffs = ((r.errorMessage ? r.errorMessage + '\n' : '') + (r.comparisonResult || r.differences || ''))
+              .split('\n').filter(Boolean);
           const label = (b.def && b.def.name && b.def.name !== b.tcId) ? b.def.name : (b.count === 1 ? b.firstBad.name : '');
           return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:${b.roll==='error'?'#fff7ed':'#fef2f2'};cursor:pointer"
                       onclick="openGroupDetail('${esc(grp.name)}');openCaseDrawer('${esc(grp.name)}','${esc(b.firstBad.id)}')">
@@ -896,11 +897,18 @@ function renderCaseDrawer() {
     html += `<div class="expand-label">Request Body</div>` + drawerPre(prettyJson(tc.jsonBody));
   }
 
-  if (!res.executedAt && !res.sourceStatus && !res.targetStatus) {
+  // Transport / infrastructure failure — always show the reason, any mode
+  const errMsg = res.errorMessage
+      || (st === 'error' && !res.targetStatus && !res.sourceStatus ? (res.comparisonResult || '') : '');
+  if (st === 'error' && errMsg) {
+    html += `<div class="drawer-err">⚠ ${esc(errMsg)}</div>`;
+  }
+
+  if (!res.executedAt && !res.sourceStatus && !res.targetStatus && !errMsg) {
     html += `<div style="color:#9ca3af;font-size:13px;padding:16px 0">Not executed yet — run the group or hit ↻ Re-run.</div>`;
   } else {
     if (hasCmp) {
-      const diffs = (res.comparisonResult || '').split('\n').filter(Boolean);
+      const diffs = (res.comparisonResult || '').split('\n').filter(Boolean).filter(d => d !== errMsg);
       html += `<div class="expand-label" style="color:#0369a1;margin-top:10px">⇄ Comparison Result</div>`;
       html += diffs.length
         ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>`
@@ -925,6 +933,11 @@ function renderCaseDrawer() {
       if (!hasCmp && res.targetResponse) {
         html += `<div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>` + drawerPre(prettyJson(res.targetResponse));
       }
+    }
+    // NONE mode (plumbing calls): no comparison, no assertions — still show what came back
+    if (!hasCmp && !hasAuto && (res.targetStatus || res.targetResponse)) {
+      html += `<div class="expand-label" style="margin-top:6px">Target Response (${esc(res.targetStatus || '—')})</div>`
+            + drawerPre(prettyJson(res.targetResponse) || '—');
     }
     if (res.executedAt) {
       html += `<div style="font-size:11px;color:#9ca3af;margin-top:8px">Executed: ${esc(res.executedAt)} · mode ${esc(mode)}</div>`;

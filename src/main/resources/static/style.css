@@ -279,3 +279,6 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .busy-box { background: #fff; border: 1px solid var(--gray-border); box-shadow: 0 8px 30px rgba(0,0,0,.15); border-radius: 10px; padding: 16px 24px; font-size: 14px; font-weight: 600; display: flex; gap: 12px; align-items: center; }
 .spinner { width: 18px; height: 18px; border: 3px solid #dbeafe; border-top-color: var(--blue); border-radius: 50%; animation: rot .8s linear infinite; flex-shrink: 0; }
 @keyframes rot { to { transform: rotate(360deg); } }
+
+/* ─── Execution error callout in drawer ──────────────────────── */
+.drawer-err { background: var(--red-light); border: 1px solid #fecaca; border-left: 4px solid var(--red); color: #7f1d1d; padding: 10px 12px; border-radius: 6px; font-size: 12.5px; margin-bottom: 12px; white-space: pre-wrap; word-break: break-word; }

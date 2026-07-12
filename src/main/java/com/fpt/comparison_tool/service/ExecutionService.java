@@ -399,14 +399,32 @@ public class ExecutionService {
             }
 
         } catch (Exception e) {
+            String reason = errorReason(e);
             TestResult r = new TestResult();
             r.setStatus(ExecutionStatus.ERROR);
             r.setModeRun(verificationMode.getValue());
-            r.setComparisonResult("Execution error: " + e.getMessage());
+            r.setErrorMessage(reason);
+            r.setComparisonResult(reason);   // also lands in the Excel "Differences" column
             r.setExecutedAt(timestamp);
             tc.setResult(r);
             progress.recordError(group.getName(), tc);
         }
+    }
+
+    /** Human-readable reason for a transport/infrastructure failure. */
+    private String errorReason(Exception e) {
+        Throwable c = e;
+        while (c.getCause() != null && c.getCause() != c) c = c.getCause();
+        String base = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        if (c instanceof java.net.SocketTimeoutException)
+            return "⏱ Timeout — no response within the configured timeout. " + base;
+        if (c instanceof java.net.UnknownHostException)
+            return "🌐 Unknown host — the URL's domain cannot be resolved (check Environment URL): " + c.getMessage();
+        if (c instanceof java.net.ConnectException)
+            return "🔌 Connection failed — host unreachable or port closed. " + base;
+        if (c instanceof javax.net.ssl.SSLException)
+            return "🔒 SSL error: " + base;
+        return "Execution error: " + base;
     }
 
     // ── NONE mode ─────────────────────────────────────────────────────────────

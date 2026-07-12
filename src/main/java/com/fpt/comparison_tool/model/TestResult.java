@@ -17,6 +17,9 @@ public class TestResult {
     // ── Automation block (populated when mode = automation or both) ───────────
     private String assertionResult;      // e.g. "3/4 passed — $.status expected 'active' got 'inactive'"
 
+    // ── Transport / infrastructure failure (status = ERROR) ───────────────────
+    private String errorMessage;         // human-readable reason: timeout, unknown host, refused…
+
     public TestResult() {
         this.status = ExecutionStatus.PENDING;
     }
@@ -29,6 +32,9 @@ public class TestResult {
 
     public ExecutionStatus getStatus() { return status; }
     public void setStatus(ExecutionStatus status) { this.status = status; }
+
+    public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
 
     public String getModeRun() { return modeRun; }
     public void setModeRun(String modeRun) { this.modeRun = modeRun; }
