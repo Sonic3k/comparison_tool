@@ -1,11 +1,34 @@
 // ─── Group Grid ───────────────────────────────────────────────────────────────
+/** Chunk a group's requests by testCaseId, first-appearance order. */
+function tcChunks(grp) {
+  const chunks = []; const by = new Map();
+  for (const r of (grp.testRequests || [])) {
+    const t = r.testCaseId || r.id;
+    if (!by.has(t)) { const c = { tcId: t, reqs: [] }; by.set(t, c); chunks.push(c); }
+    by.get(t).reqs.push(r);
+  }
+  return chunks;
+}
+
+/** TEST-CASE-level stats (a TC passes only when all its enabled requests pass). */
+function tcStats(grp) {
+  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
+  for (const c of tcChunks(grp)) {
+    const en = c.reqs.filter(r => r.enabled !== false);
+    if (!en.length) continue;
+    total++; reqs += en.length;
+    const roll = tcRollupStatus(en);
+    if (roll === 'passed')      passed++;
+    else if (roll === 'failed') failed++;
+    else if (roll === 'error')  error++;
+  }
+  return { total, passed, failed, error, pending: total - passed - failed - error, reqs };
+}
+
+// All headline numbers count TEST CASES (new architecture), not requests.
 function gStats(group) {
-  const cases = (group.testRequests || []).filter(tc => tc.enabled);
-  return {
-    total:  cases.length,
-    passed: cases.filter(tc => tc.result?.status === 'passed').length,
-    failed: cases.filter(tc => tc.result?.status === 'failed' || tc.result?.status === 'error').length
-  };
+  const s = tcStats(group);
+  return { total: s.total, passed: s.passed, failed: s.failed + s.error, reqs: s.reqs };
 }
 
 function filterGroups() { renderGroupGrid(suite?.testGroups || []); }
@@ -24,7 +47,7 @@ function renderGroupGrid(groups) {
         <div class="group-card-header">
           <div>
             <div class="group-card-name">${esc(grp.name)}${disabled ? ' <span style="font-size:11px;color:#9ca3af;font-weight:400">(disabled)</span>' : ''}</div>
-            <div class="group-card-owner">${esc(grp.owner || '')}</div>
+            <div class="group-card-owner">${st.reqs} requests${grp.owner ? ' · ' + esc(grp.owner) : ''}</div>
           </div>
           <div onclick="event.stopPropagation()" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-teal btn-xs" onclick="runGroup('${esc(grp.name)}')">▶</button>
@@ -38,7 +61,7 @@ function renderGroupGrid(groups) {
         </div>
         ${grp.description ? `<div class="group-card-desc">${esc(grp.description)}</div>` : ''}
         <div class="group-card-stats">
-          <div class="mini-stat blue"><div class="n">${st.total}</div><div class="l">Total</div></div>
+          <div class="mini-stat blue"><div class="n">${st.total}</div><div class="l">Test cases</div></div>
           <div class="mini-stat green"><div class="n">${st.passed}</div><div class="l">Passed</div></div>
           <div class="mini-stat red"><div class="n">${st.failed}</div><div class="l">Failed</div></div>
           <div class="mini-stat gray"><div class="n">${pend}</div><div class="l">Pending</div></div>
@@ -57,16 +80,10 @@ function renderSuiteSummary(groups) {
   const bar = document.getElementById('suiteSummaryBar');
   if (!bar) return;
 
-  let total = 0, passed = 0, failed = 0, error = 0;
+  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
   for (const grp of groups) {
-    for (const tc of (grp.testRequests || [])) {
-      if (tc.enabled === false) continue;
-      total++;
-      const s = tc.result?.status;
-      if (s === 'passed')      passed++;
-      else if (s === 'failed') failed++;
-      else if (s === 'error')  error++;
-    }
+    const s = tcStats(grp);
+    total += s.total; passed += s.passed; failed += s.failed; error += s.error; reqs += s.reqs;
   }
 
   const executed = passed + failed + error;
@@ -81,7 +98,7 @@ function renderSuiteSummary(groups) {
   document.getElementById('sn-fail').textContent  = failed;
   document.getElementById('sn-error').textContent = error;
   document.getElementById('sn-pend').textContent  = pending;
-  document.getElementById('summaryPassRate').textContent = `${passRate}% pass rate`;
+  document.getElementById('summaryPassRate').textContent = `${passRate}% pass rate · ${reqs} requests`;
 
   document.getElementById('bar-pass').style.width  = (passed / total * 100) + '%';
   document.getElementById('bar-fail').style.width  = (failed / total * 100) + '%';
@@ -177,11 +194,12 @@ function renderDetailStats(grp) {
   const st = gStats(grp), pend = st.total - st.passed - st.failed;
   document.getElementById('detailStats').innerHTML = st.total === 0 ? '' : `
     <div class="stats-row">
-      <div class="stat-box blue"><div class="stat-num">${st.total}</div><div class="stat-lbl">Total</div></div>
+      <div class="stat-box blue"><div class="stat-num">${st.total}</div><div class="stat-lbl">Test cases</div></div>
       <div class="stat-box green"><div class="stat-num">${st.passed}</div><div class="stat-lbl">Passed</div></div>
       <div class="stat-box red"><div class="stat-num">${st.failed}</div><div class="stat-lbl">Failed / Error</div></div>
       <div class="stat-box amber"><div class="stat-num">${pend}</div><div class="stat-lbl">Pending</div></div>
-    </div>`;
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin:-8px 0 12px">${st.reqs} requests in ${st.total} test cases</div>`;
 }
 
 function modeBadge(mode) {
@@ -270,10 +288,10 @@ function caseRowHtml(grp, tc, groupKey) {
   return `
         <tr class="case-row${disabled ? ' case-disabled' : ''}${memberCls}" id="row-${esc(tc.id)}">
           <td style="text-align:center;color:#d1d5db;font-size:10px;cursor:pointer" id="arr-${esc(tc.id)}" onclick="toggleExpand('${esc(tc.id)}')">▶</td>
-          <td class="mono" style="font-weight:600;cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${idPrefix}${esc(tc.id)}</td>
-          <td style="cursor:pointer" onclick="toggleExpand('${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
+          <td class="mono" style="font-weight:600;cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${idPrefix}${esc(tc.id)}</td>
+          <td style="cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
-          <td class="mono" style="color:#6b7280">${esc(tc.endpoint || '')}</td>
+          <td class="mono" style="color:#6b7280;cursor:pointer" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">${esc(tc.endpoint || '')}</td>
           <td>${modeBadge(mode)}</td>
           <td><span class="bs s-${st}" id="st-${esc(tc.id)}">${st}</span></td>
           <td class="mono">${esc(res.targetStatus || '')}</td>
@@ -283,7 +301,6 @@ function caseRowHtml(grp, tc, groupKey) {
               title="${disabled ? 'Enable' : 'Disable'}">
               ${disabled ? '○' : '●'}
             </button>
-            <button class="btn btn-outline btn-xs" onclick="openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')" title="Open response panel">⧉</button>
             <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this request only (no setup, no variables)">↻</button>
             <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
             <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')">Edit</button>
@@ -643,7 +660,7 @@ async function pollProgress() {
   if (!res.success) return;
   const p = res.data;
 
-  document.getElementById('progressLabel').textContent = `${p.done} / ${p.total}`;
+  document.getElementById('progressLabel').textContent = `${p.done} / ${p.total} requests`;
   document.getElementById('progressBar').style.width   = (p.percent || 0) + '%';
   document.getElementById('progressCounts').innerHTML =
     `<span style="color:#059669;font-weight:600">${p.passed || 0} ✓</span>` +
@@ -689,16 +706,44 @@ async function finishExec(p) {
   openExecDoneModal(p);
 }
 
+/** TEST-CASE rollups restricted to exactly the requests that were in scope. */
+function scopeTcStats(p) {
+  const keys = p.scopeKeys || [];
+  if (!keys.length || !suite) return null;
+  const byGroup = {};
+  for (const k of keys) {
+    const i = k.indexOf('::'); if (i < 0) continue;
+    (byGroup[k.slice(0, i)] ||= new Set()).add(k.slice(i + 2));
+  }
+  let total = 0, passed = 0, failed = 0, error = 0;
+  for (const [gname, ids] of Object.entries(byGroup)) {
+    const grp = (suite.testGroups || []).find(g => g.name === gname);
+    if (!grp) continue;
+    for (const c of tcChunks(grp)) {
+      const en = c.reqs.filter(r => ids.has(r.id));
+      if (!en.length) continue;
+      total++;
+      const roll = tcRollupStatus(en);
+      if (roll === 'passed')      passed++;
+      else if (roll === 'failed') failed++;
+      else if (roll === 'error')  error++;
+    }
+  }
+  return { total, passed, failed, error };
+}
+
 function openExecDoneModal(p) {
   const state = p.state || (p.stopped ? 'stopped' : (p.error ? 'aborted' : 'done'));
   const titles = { done: '✅ Execution finished', stopped: '⏹ Execution stopped', aborted: '❌ Execution aborted' };
   document.getElementById('edTitle').textContent  = titles[state] || titles.done;
   document.getElementById('edScope').textContent  = 'Scope: ' + (_execLabel || 'All groups');
-  document.getElementById('ed-total').textContent = p.total || 0;
-  document.getElementById('ed-pass').textContent  = p.passed || 0;
-  document.getElementById('ed-fail').textContent  = p.failed || 0;
-  document.getElementById('ed-error').textContent = p.errorCount || 0;
+  const t = scopeTcStats(p);
+  document.getElementById('ed-total').textContent = t ? t.total  : (p.total || 0);
+  document.getElementById('ed-pass').textContent  = t ? t.passed : (p.passed || 0);
+  document.getElementById('ed-fail').textContent  = t ? t.failed : (p.failed || 0);
+  document.getElementById('ed-error').textContent = t ? t.error  : (p.errorCount || 0);
   const bits = [];
+  bits.push(`Requests: ${p.passed || 0} ✓ · ${p.failed || 0} ✗ · ${p.errorCount || 0} !  (${p.done || 0}/${p.total || 0})`);
   if (p.elapsedMs != null) bits.push('Duration: ' + fmtDur(p.elapsedMs));
   if (state === 'stopped') bits.push('Remaining requests were skipped — teardown still ran.');
   if (state === 'aborted' && p.error) bits.push('Error: ' + p.error);
@@ -714,17 +759,11 @@ function exportGroupXml(name) {
 // ─── Results Panel ────────────────────────────────────────────────────────────
 function renderResultsPanel() {
   const groups = suite?.testGroups || [];
-  let total = 0, passed = 0, failed = 0, error = 0;
+  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
 
   for (const grp of groups) {
-    for (const tc of (grp.testRequests || [])) {
-      if (tc.enabled === false) continue;
-      total++;
-      const s = tc.result?.status;
-      if (s === 'passed')      passed++;
-      else if (s === 'failed') failed++;
-      else if (s === 'error')  error++;
-    }
+    const s = tcStats(grp);
+    total += s.total; passed += s.passed; failed += s.failed; error += s.error; reqs += s.reqs;
   }
 
   const executed = passed + failed + error;
@@ -757,16 +796,20 @@ function renderResultsPanel() {
 
   // Per-group breakdown
   breakdown.innerHTML = groups.map(grp => {
-    const cases = (grp.testRequests || []).filter(tc => tc.enabled !== false);
-    const gPass  = cases.filter(tc => tc.result?.status === 'passed').length;
-    const gFail  = cases.filter(tc => tc.result?.status === 'failed').length;
-    const gError = cases.filter(tc => tc.result?.status === 'error').length;
-    const gPend  = cases.length - gPass - gFail - gError;
-    const gTotal = cases.length;
+    const gs = tcStats(grp);
+    const gPass = gs.passed, gFail = gs.failed, gError = gs.error, gPend = gs.pending, gTotal = gs.total;
     const gRate  = gTotal > 0 ? Math.round(gPass / gTotal * 100) : 0;
 
-    // Failed/error TCs list
-    const badTcs = cases.filter(tc => tc.result?.status === 'failed' || tc.result?.status === 'error');
+    // Failed/error TEST CASES (rollup) — click opens the first bad request in the drawer
+    const defs = new Map((grp.testCaseDefs || []).map(d => [d.id, d]));
+    const badTcs = tcChunks(grp).map(c => {
+      const en = c.reqs.filter(r => r.enabled !== false);
+      if (!en.length) return null;
+      const roll = tcRollupStatus(en);
+      if (roll !== 'failed' && roll !== 'error') return null;
+      const firstBad = en.find(r => r.result?.status === 'failed' || r.result?.status === 'error') || en[0];
+      return { tcId: c.tcId, roll, firstBad, count: en.length, def: defs.get(c.tcId) };
+    }).filter(Boolean);
 
     return `<div class="box" style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -787,20 +830,22 @@ function renderResultsPanel() {
         <div style="background:#f97316;width:${gTotal>0?gError/gTotal*100:0}%;height:100%"></div>
       </div>
       ${badTcs.length ? `<div style="display:flex;flex-direction:column;gap:4px">
-        ${badTcs.map(tc => {
-          const st = tc.result?.status;
-          const diffs = (tc.result?.differences || '').split('\n').filter(Boolean);
-          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:${st==='error'?'#fff7ed':'#fef2f2'};cursor:pointer"
-                      onclick="openGroupDetail('${esc(grp.name)}');openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')">
-            <span class="bs s-${st}" style="flex-shrink:0">${st}</span>
+        ${badTcs.map(b => {
+          const r = b.firstBad.result || {};
+          const diffs = (r.comparisonResult || r.differences || '').split('\n').filter(Boolean);
+          const label = (b.def && b.def.name && b.def.name !== b.tcId) ? b.def.name : (b.count === 1 ? b.firstBad.name : '');
+          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:${b.roll==='error'?'#fff7ed':'#fef2f2'};cursor:pointer"
+                      onclick="openGroupDetail('${esc(grp.name)}');openCaseDrawer('${esc(grp.name)}','${esc(b.firstBad.id)}')">
+            <span class="bs s-${b.roll}" style="flex-shrink:0">${b.roll}</span>
             <div>
-              <span style="font-weight:600;font-size:12px">${esc(tc.id)}</span>
-              <span style="color:#6b7280;font-size:12px;margin-left:6px">${esc(tc.name)}</span>
+              <span style="font-weight:600;font-size:12px">${esc(b.tcId)}</span>
+              ${b.count > 1 ? `<span class="tc-mini tcid">${b.count} requests</span>` : ''}
+              <span style="color:#6b7280;font-size:12px;margin-left:6px">${esc(label || '')}</span>
               ${diffs.length ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">${esc(diffs[0])}${diffs.length>1?' …':''}</div>` : ''}
             </div>
           </div>`;
         }).join('')}
-      </div>` : `<div style="font-size:12px;color:#059669;margin-top:4px">✓ All tests passed</div>`}
+      </div>` : `<div style="font-size:12px;color:#059669;margin-top:4px">✓ All test cases passed</div>`}
     </div>`;
   }).join('');
 }
