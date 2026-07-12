@@ -239,6 +239,7 @@ public class JmeterExporter {
     private void buildHttpDefaults(Xml x, ParsedUrl pu) {
         x.open("ConfigTestElement", "guiclass", "HttpDefaultsGui",
                "testclass", "ConfigTestElement", "testname", "HTTP Request Defaults", "enabled", "true");
+        emptyArguments(x);   // JMeter refuses to load defaults without HTTPsampler.Arguments
         x.prop("stringProp", "HTTPSampler.domain",          pu.host);
         x.prop("stringProp", "HTTPSampler.port",            pu.port > 0 ? String.valueOf(pu.port) : "");
         x.prop("stringProp", "HTTPSampler.protocol",        pu.protocol);
@@ -277,43 +278,51 @@ public class JmeterExporter {
         x.close("hashTree");
     }
 
+    /**
+     * JMeter requires every HTTPSamplerProxy (and HTTP Defaults) to carry an
+     * "HTTPsampler.Arguments" elementProp — note the lowercase 's': that is
+     * the literal JMeter constant. It must exist even when empty, otherwise
+     * JMeter fails to load the plan with "Property HTTPsampler.Arguments is
+     * unset for element ...".
+     */
     private void buildBody(Xml x, TestRequest tc) {
         List<Param> fp  = nullSafe(tc.getFormParams());
         String      jb  = tc.getJsonBody();
+        boolean     raw = fp.isEmpty() && jb != null && !jb.isBlank();
 
-        if (!fp.isEmpty()) {
-            x.prop("boolProp", "HTTPSampler.postBodyRaw", "false");
-            x.open("elementProp", "name", "HTTPSampler.Arguments", "elementType", "Arguments");
-            x.open("collectionProp", "name", "Arguments.arguments");
+        x.prop("boolProp", "HTTPSampler.postBodyRaw", String.valueOf(raw));
+        x.open("elementProp", "name", "HTTPsampler.Arguments", "elementType", "Arguments",
+               "guiclass", "HTTPArgumentsPanel", "testclass", "Arguments",
+               "testname", "User Defined Variables", "enabled", "true");
+        x.open("collectionProp", "name", "Arguments.arguments");
+
+        if (raw) {
+            x.open("elementProp", "name", "", "elementType", "HTTPArgument");
+            x.prop("boolProp",   "HTTPArgument.always_encode", "false");
+            x.prop("stringProp", "Argument.value",             vars(jb));
+            x.prop("stringProp", "Argument.metadata",          "=");
+            x.close("elementProp");
+        } else {
             for (Param p : fp) {
                 x.open("elementProp", "name", p.getKey(), "elementType", "HTTPArgument");
                 x.prop("boolProp",   "HTTPArgument.always_encode", "true");
                 x.prop("stringProp", "Argument.name",              p.getKey());
                 x.prop("stringProp", "Argument.value",             vars(p.getValue()));
                 x.prop("stringProp", "Argument.metadata",          "=");
+                x.prop("boolProp",   "HTTPArgument.use_equals",    "true");
                 x.close("elementProp");
             }
-            x.close("collectionProp");
-            x.close("elementProp");
-            return;
         }
 
-        if (jb != null && !jb.isBlank()) {
-            x.prop("boolProp", "HTTPSampler.postBodyRaw", "true");
-            x.open("elementProp", "name", "HTTPSampler.Arguments", "elementType", "Arguments");
-            x.open("collectionProp", "name", "Arguments.arguments");
-            x.open("elementProp", "name", "", "elementType", "HTTPArgument");
-            x.prop("boolProp",   "HTTPArgument.always_encode", "false");
-            x.prop("stringProp", "Argument.value",             vars(jb));
-            x.prop("stringProp", "Argument.metadata",          "=");
-            x.close("elementProp");
-            x.close("collectionProp");
-            x.close("elementProp");
-            return;
-        }
+        x.close("collectionProp");
+        x.close("elementProp");
+    }
 
-        x.prop("boolProp", "HTTPSampler.postBodyRaw", "false");
-        x.open("elementProp", "name", "HTTPSampler.Arguments", "elementType", "Arguments");
+    /** Empty HTTPsampler.Arguments block — required by HTTP Request Defaults. */
+    private void emptyArguments(Xml x) {
+        x.open("elementProp", "name", "HTTPsampler.Arguments", "elementType", "Arguments",
+               "guiclass", "HTTPArgumentsPanel", "testclass", "Arguments",
+               "testname", "User Defined Variables", "enabled", "true");
         x.open("collectionProp", "name", "Arguments.arguments");
         x.close("collectionProp");
         x.close("elementProp");
