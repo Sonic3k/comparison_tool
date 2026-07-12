@@ -249,10 +249,11 @@ function renderDetailCases(grp) {
   for (const c of chunks) {
     if (c.reqs.length > 1) {
       const key = 'i' + (idx++);
-      _tcMembers[key] = c.reqs.map(r => r.id);
+      const enabledReqs = c.reqs.filter(r => r.enabled !== false);
+      _tcMembers[key] = enabledReqs.map(r => r.id);   // disabled requests never count toward the rollup
       c.reqs.forEach(r => { _tcOfReq[r.id] = key; });
       const def  = defs.get(c.tcId);
-      const roll = tcRollupStatus(c.reqs);
+      const roll = tcRollupStatus(enabledReqs);
       html += `
         <tr class="tc-head-row" onclick="toggleTcGroup('${key}')">
           <td style="text-align:center;color:#93c5fd;font-size:10px" id="tcarr-${key}">▼</td>
