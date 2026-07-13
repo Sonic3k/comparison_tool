@@ -21,8 +21,14 @@ public class Environment {
     @JacksonXmlProperty(localName = "param")
     private List<Param> headers;
 
+    /** Environment-level variables usable as {{name}} in any request field. */
+    @JacksonXmlElementWrapper(localName = "variables")
+    @JacksonXmlProperty(localName = "param")
+    private List<Param> variables;
+
     public Environment() {
-        this.headers = new ArrayList<>();
+        this.headers   = new ArrayList<>();
+        this.variables = new ArrayList<>();
     }
 
     public Environment(String name, String url, String authProfile, List<Param> headers) {
@@ -30,6 +36,7 @@ public class Environment {
         this.url         = url;
         this.authProfile = authProfile;
         this.headers     = headers != null ? headers : new ArrayList<>();
+        this.variables   = new ArrayList<>();
     }
 
     public String getName()                  { return name; }
@@ -43,4 +50,7 @@ public class Environment {
 
     public List<Param> getHeaders()          { return headers; }
     public void setHeaders(List<Param> h)    { this.headers = h; }
+
+    public List<Param> getVariables()        { return variables; }
+    public void setVariables(List<Param> v)  { this.variables = v; }
 }

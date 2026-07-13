@@ -57,6 +57,9 @@ public class TestRequest {
     @JacksonXmlProperty(isAttribute = true)
     private String author;
 
+    /** Optional auth override; blank/null = use the environment's profile. */
+    private String authProfile;
+
     /**
      * Variable extraction DSL from response body.
      * Format: "varName=$.jsonPath, varName2=$.other.path"
@@ -162,6 +165,11 @@ public class TestRequest {
 
     public String getHeaders() { return headers; }
     public void setHeaders(String headers) { this.headers = headers; }
+
+    public TestRequest withAuthProfile(String profile) { this.authProfile = profile; return this; }
+
+    public String getAuthProfile() { return authProfile; }
+    public void setAuthProfile(String authProfile) { this.authProfile = authProfile; }
 
     public String getAuthor() { return author; }
     public void setAuthor(String author) { this.author = author; }

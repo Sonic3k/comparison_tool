@@ -11,8 +11,10 @@ import org.springframework.stereotype.Service;
  * default env headers, TC header overrides, auth header (with token already
  * fetched if OAuth2), and the request body (form or JSON).
  *
- * Variable placeholders like {{varName}} are NOT resolved — the cURL is meant
- * for manual debugging, so any unresolved placeholders stay visible.
+ * Environment-level variables (and the implicit {{baseUrl}}) ARE resolved —
+ * they are static config, and resolving them shows the real URL. Runtime
+ * placeholders from extractVariables are NOT resolved — the cURL is meant for
+ * manual debugging, so those stay visible.
  */
 @Service
 public class CurlBuilder {
@@ -25,6 +27,14 @@ public class CurlBuilder {
 
     public String build(Environment env, TestRequest tc, AuthProfile auth) {
         if (env == null) return "# Environment not configured";
+
+        java.util.Map<String, String> vars = new java.util.LinkedHashMap<>();
+        if (env.getVariables() != null) {
+            for (Param p : env.getVariables()) {
+                if (p.getKey() != null && !p.getKey().isBlank()) vars.put(p.getKey().trim(), p.getValue() != null ? p.getValue() : "");
+            }
+        }
+        if (env.getUrl() != null && !vars.containsKey("baseUrl")) vars.put("baseUrl", env.getUrl());
 
         HttpHeaders headers = new HttpHeaders();
 
@@ -41,7 +51,7 @@ public class CurlBuilder {
                 line = line.trim();
                 if (line.isEmpty()) continue;
                 int idx = line.indexOf(':');
-                if (idx > 0) headers.set(line.substring(0, idx).trim(), line.substring(idx + 1).trim());
+                if (idx > 0) headers.set(line.substring(0, idx).trim(), sub(line.substring(idx + 1).trim(), vars));
             }
         }
 
@@ -52,10 +62,12 @@ public class CurlBuilder {
             headers.set("X-Auth-Note", "auth resolution failed: " + e.getMessage());
         }
 
-        // 4. URL
-        String url = (env.getUrl() != null ? env.getUrl() : "") + tc.getEndpoint();
+        // 4. URL — env vars resolved; a full http(s) endpoint is used as-is
+        String ep = sub(tc.getEndpoint() != null ? tc.getEndpoint() : "", vars);
+        String url = ep.startsWith("http://") || ep.startsWith("https://")
+                ? ep : (env.getUrl() != null ? env.getUrl() : "") + ep;
         if (tc.getQueryParams() != null && !tc.getQueryParams().isEmpty()) {
-            url += "?" + tc.getQueryParamsAsString();
+            url += "?" + sub(tc.getQueryParamsAsString(), vars);
         }
 
         // 5. Body
@@ -75,7 +87,7 @@ public class CurlBuilder {
             if (!headers.containsKey(HttpHeaders.CONTENT_TYPE)) {
                 headers.set(HttpHeaders.CONTENT_TYPE, "application/json");
             }
-            bodyArg = " \\\n  --data " + shellQuote(tc.getJsonBody());
+            bodyArg = " \\\n  --data " + shellQuote(sub(tc.getJsonBody(), vars));
         }
 
         // 6. Assemble
@@ -91,6 +103,16 @@ public class CurlBuilder {
     }
 
     /** Wrap in single quotes, escape embedded single quotes (POSIX-safe). */
+    /** Replace {{name}} for known env variables only; unknown ones stay visible. */
+    private String sub(String text, java.util.Map<String, String> vars) {
+        if (text == null || text.isEmpty() || vars.isEmpty()) return text;
+        String out = text;
+        for (java.util.Map.Entry<String, String> e : vars.entrySet()) {
+            out = out.replace("{{" + e.getKey() + "}}", e.getValue());
+        }
+        return out;
+    }
+
     private String shellQuote(String s) {
         if (s == null) return "''";
         return "'" + s.replace("'", "'\\''") + "'";

@@ -2,6 +2,7 @@ package com.fpt.comparison_tool.generator;
 
 import com.fpt.comparison_tool.model.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -40,21 +41,25 @@ public class SampleDataBuilder {
 
     private static List<Environment> buildEnvironments() {
         return Arrays.asList(
-            new Environment("Legacy SIT", "https://api-legacy-sit.company.com", "Legacy-SAML",
+            withVars(new Environment("Legacy SIT", "https://api-legacy-sit.company.com", "Legacy-SAML",
                 Arrays.asList(new Param("Content-Type", "application/json"),
                               new Param("Accept", "application/json"),
                               new Param("X-API-Version", "1.0"),
                               new Param("X-Environment", "legacy-sit"))),
+                     new Param("userSvc",  "https://api-legacy-sit.company.com/user-service"),
+                     new Param("orderSvc", "https://api-legacy-sit.company.com/order-service")),
             new Environment("Legacy UAT", "https://api-legacy-uat.company.com", "Legacy-SAML",
                 Arrays.asList(new Param("Content-Type", "application/json"),
                               new Param("Accept", "application/json"),
                               new Param("X-API-Version", "1.0"),
                               new Param("X-Environment", "legacy-uat"))),
-            new Environment("New Dev", "https://api-new-dev.company.com", "Modern-OAuth2",
+            withVars(new Environment("New Dev", "https://api-new-dev.company.com", "Modern-OAuth2",
                 Arrays.asList(new Param("Content-Type", "application/json"),
                               new Param("Accept", "application/json"),
                               new Param("X-API-Version", "2.0"),
                               new Param("X-Environment", "dev"))),
+                     new Param("userSvc",  "https://api-new-dev.company.com/user-service"),
+                     new Param("orderSvc", "https://api-new-dev.company.com/order-service")),
             new Environment("New UAT", "https://api-new-uat.company.com", "Modern-OAuth2",
                 Arrays.asList(new Param("Content-Type", "application/json"),
                               new Param("Accept", "application/json"),
@@ -101,6 +106,21 @@ public class SampleDataBuilder {
                 "{\"id\":12345,\"name\":\"John Doe\",\"email\":\"john@example.com\"}",
                 "{\"id\":12345,\"name\":\"John Doe\",\"email\":\"john@example.com\"}",
                 "2025-01-15 10:30:15")));
+
+        // Environment-variable demo: a full URL built from an env variable.
+        // "Legacy SIT" and "New Dev" both define {{userSvc}} with their own
+        // value, so comparison mode calls two different hosts from one request.
+        // {{baseUrl}} (the environment's URL) is always available implicitly.
+        g.addTestRequest(tc("TC010", "Get profile via userSvc variable",
+                "Full-URL endpoint using the environment-level {{userSvc}} variable",
+                true, HttpMethod.GET, "{{userSvc}}/profiles/12345", "qa@company.com"));
+
+        // Auth-override demo: this request authenticates with Admin-Basic
+        // regardless of what the environment's auth profile is.
+        g.addTestRequest(tc("TC011", "Admin-only endpoint (auth override)",
+                "Uses the Admin-Basic profile instead of the environment default",
+                true, HttpMethod.GET, "/api/admin/health", "qa@company.com")
+            .withAuthProfile("Admin-Basic"));
 
         // Setup/teardown phase demo — setup runs first, teardown always runs
         // last (even after a Stop), regardless of row position in the sheet.
@@ -218,6 +238,11 @@ public class SampleDataBuilder {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private static Environment withVars(Environment env, Param... vars) {
+        env.setVariables(new ArrayList<>(Arrays.asList(vars)));
+        return env;
+    }
 
     private static TestRequest tc(String id, String name, String description,
                                 boolean enabled, HttpMethod method,

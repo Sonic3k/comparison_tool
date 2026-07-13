@@ -42,6 +42,26 @@ function headersFromRows() {
   return list;
 }
 
+function varsFromRows() {
+  const list = [];
+  document.querySelectorAll('#envVarsBody tr').forEach(r => {
+    const k = r.querySelector('.var-key').value.trim();
+    const v = r.querySelector('.var-val').value.trim();
+    if (k) list.push({ key: k, value: v });
+  });
+  return list;
+}
+
+function addEnvVarRow(key = '', value = '') {
+  const tbody = document.getElementById('envVarsBody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="var-key" value="${esc(key)}" placeholder="userSvc" style="width:100%"/></td>
+    <td><input class="var-val" value="${esc(value)}" placeholder="https://users.company.com/api" style="width:100%"/></td>
+    <td><button class="btn btn-outline btn-xs" style="color:var(--red)" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+
 function addEnvHeaderRow(key = '', value = '') {
   const tbody = document.getElementById('envHeadersBody');
   const tr = document.createElement('tr');
@@ -82,10 +102,12 @@ function showEnvModal(idx = -1) {
   _editEnvIdx = idx;
   document.getElementById('envModalTitle').textContent = idx >= 0 ? 'Edit Environment' : 'Add Environment';
   document.getElementById('envHeadersBody').innerHTML = '';
+  document.getElementById('envVarsBody').innerHTML = '';
   if (idx >= 0) {
     const e = suite.environments[idx];
     sv('env-name', e.name); sv('env-url', e.url); sv('env-auth', e.authProfile || '');
     (e.headers || []).forEach(p => addEnvHeaderRow(p.key, p.value));
+    (e.variables || []).forEach(p => addEnvVarRow(p.key, p.value));
   } else {
     ['env-name', 'env-url', 'env-auth'].forEach(id => sv(id, ''));
   }
@@ -106,7 +128,7 @@ async function deleteEnv(i) {
 }
 
 async function saveEnvironment() {
-  const env = { name: g('env-name'), url: g('env-url'), authProfile: g('env-auth'), headers: headersFromRows() };
+  const env = { name: g('env-name'), url: g('env-url'), authProfile: g('env-auth'), headers: headersFromRows(), variables: varsFromRows() };
   if (!env.name) { alert('Environment name required'); return; }
   suite.environments = suite.environments || [];
   if (_editEnvIdx >= 0) suite.environments[_editEnvIdx] = env;

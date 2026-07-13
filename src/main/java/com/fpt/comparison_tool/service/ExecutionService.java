@@ -380,9 +380,8 @@ public class ExecutionService {
         TestRequest resolved = resolveVariables(tc, variables);
 
         try {
-            failOnUnresolvedVars(resolved);
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
-            AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+            AuthProfile targetAuth = resolveAuthProfile(suite, tc, targetEnv);
 
             String responseBody = switch (verificationMode) {
                 case COMPARISON -> {
@@ -463,8 +462,8 @@ public class ExecutionService {
                                ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
         ComparisonConfig cmp = resolveComparison(original, suite);
 
-        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
-        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+        AuthProfile sourceAuth = resolveAuthProfile(suite, original, sourceEnv);
+        AuthProfile targetAuth = resolveAuthProfile(suite, original, targetEnv);
 
         long srcStart = System.currentTimeMillis();
         ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, resolved, sourceAuth);
@@ -514,7 +513,7 @@ public class ExecutionService {
     private String runAutomation(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                                  Environment targetEnv, AuthProfile targetAuth,
                                  ExecutionProgress progress, String timestamp) throws Exception {
-        AutomationConfig auto = original.getAutomationConfig();
+        AutomationConfig auto = substituteAutomation(resolved.getAutomationConfig(), envVarMap(targetEnv));
 
         long start = System.currentTimeMillis();
         ResponseEntity<String> targetResp = callEndpoint(targetEnv, resolved, targetAuth);
@@ -556,10 +555,10 @@ public class ExecutionService {
                            Environment sourceEnv, Environment targetEnv,
                            ExecutionProgress progress, int delayMs, String timestamp) throws Exception {
         ComparisonConfig cmp = resolveComparison(original, suite);
-        AutomationConfig auto = original.getAutomationConfig();
+        AutomationConfig auto = substituteAutomation(resolved.getAutomationConfig(), envVarMap(targetEnv));
 
-        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
-        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+        AuthProfile sourceAuth = resolveAuthProfile(suite, original, sourceEnv);
+        AuthProfile targetAuth = resolveAuthProfile(suite, original, targetEnv);
 
         long srcStart = System.currentTimeMillis();
         ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, resolved, sourceAuth);
@@ -726,6 +725,7 @@ public class ExecutionService {
         copy.setJsonBody(substituteVars(tc.getJsonBody(), variables));
         copy.setHeaders(substituteVars(tc.getHeaders(), variables));
         copy.setAuthor(tc.getAuthor());
+        copy.setAuthProfile(tc.getAuthProfile());
         copy.setExtractVariables(tc.getExtractVariables());
         copy.setComparisonConfig(tc.getComparisonConfig());
         copy.setAutomationConfig(substituteAutomation(tc.getAutomationConfig(), variables));
@@ -762,7 +762,39 @@ public class ExecutionService {
 
     // ── HTTP call ─────────────────────────────────────────────────────────────
 
+    /**
+     * Variables defined on the environment, plus the implicit {{baseUrl}}
+     * (the environment's URL) unless the environment defines its own.
+     */
+    private Map<String, String> envVarMap(Environment env) {
+        Map<String, String> vars = new LinkedHashMap<>();
+        if (env != null && env.getVariables() != null) {
+            for (Param p : env.getVariables()) {
+                if (p.getKey() != null && !p.getKey().isBlank()) {
+                    vars.put(p.getKey().trim(), p.getValue() != null ? p.getValue() : "");
+                }
+            }
+        }
+        if (env != null && env.getUrl() != null && !env.getUrl().isBlank() && !vars.containsKey("baseUrl")) {
+            vars.put("baseUrl", env.getUrl());
+        }
+        return vars;
+    }
+
+    /** Request-level auth override; falls back to the environment's profile. */
+    private AuthProfile resolveAuthProfile(TestSuite suite, TestRequest tc, Environment env) {
+        String name = tc != null && tc.getAuthProfile() != null && !tc.getAuthProfile().isBlank()
+                ? tc.getAuthProfile()
+                : (env != null ? env.getAuthProfile() : null);
+        return findProfile(suite, name);
+    }
+
     private ResponseEntity<String> callEndpoint(Environment env, TestRequest tc, AuthProfile auth) {
+        // Env-level variables are applied per side, after runtime variables;
+        // only then can "still unresolved" be judged fairly.
+        tc = resolveVariables(tc, envVarMap(env));
+        failOnUnresolvedVars(tc);
+
         HttpHeaders headers = new HttpHeaders();
 
         if (env != null && env.getHeaders() != null) {
@@ -794,7 +826,8 @@ public class ExecutionService {
     }
 
     private String buildUrl(String baseUrl, TestRequest tc) {
-        String url = baseUrl + tc.getEndpoint();
+        String ep  = tc.getEndpoint() != null ? tc.getEndpoint() : "";
+        String url = ep.startsWith("http://") || ep.startsWith("https://") ? ep : baseUrl + ep;
         if (tc.getQueryParams() != null && !tc.getQueryParams().isEmpty()) {
             url += "?" + tc.getQueryParamsAsString();
         }

@@ -60,7 +60,7 @@ Example — one test case made of two requests:
 | `verificationMode` | string | See table below |
 | `phase` | string | `setup` / `test` / `teardown` |
 | `method` | string | `GET` `POST` `PUT` `PATCH` `DELETE` |
-| `endpoint` | string | Path only — e.g. `/users/1`. Base URL comes from the environment config |
+| `endpoint` | string | Path (`/users/1`, prefixed with the environment's URL) **or a full URL** — anything starting with `http(s)://` is used as-is, typically built from environment variables: `{{userSvc}}/users/1` |
 
 ### Optional Fields
 
@@ -74,6 +74,7 @@ Example — one test case made of two requests:
 | `headers` | string | `""` | Custom headers, one per line: `Key: Value` |
 | `author` | string | `""` | Author email |
 | `extractVariables` | string | `""` | Extract values from response — see Variable Extraction section |
+| `authProfile` | string | `null` | Auth override: name of an Auth Profile to use for this request (both sides). Blank/absent = the environment's profile |
 | `comparisonConfig` | object | `null` | Per-TC comparison overrides — see Comparison Config section |
 | `automationConfig` | object | `null` | Automation assertions — required when `verificationMode` is `automation` or `both` |
 | `result` | object | `null` | Leave as `null` — tool populates this after execution |
@@ -356,6 +357,34 @@ Runs last in the group, cleans up test data. Always runs even if test TCs failed
 
 ---
 
+## Environment Variables & Multi-Base-URL
+
+Each environment can define `variables` — key/value pairs usable as `{{name}}`
+in any request field (endpoint, query, headers, body, assertions):
+
+```json
+{ "name": "target", "url": "https://host/modernized/api", "authProfile": "OAuth-Modern",
+  "headers":   [ { "key": "Accept",  "value": "application/json" } ],
+  "variables": [ { "key": "userSvc",  "value": "https://users.company.com/api" },
+                 { "key": "orderSvc", "value": "https://orders.company.com/api" } ] }
+```
+
+Rules:
+- `{{baseUrl}}` always exists implicitly — it is the environment's `url`
+  (unless you define your own `baseUrl` variable, which wins).
+- Resolution order per request, per side: runtime variables (from
+  `extractVariables`) first, then that side's environment variables.
+- An endpoint that resolves to a full `http(s)://` URL is called as-is;
+  otherwise the environment's `url` is prefixed — so existing path-style
+  suites keep working unchanged.
+- **Comparison mode**: define the same variable name in source and target with
+  different values (`userSvc` → legacy host vs modern host). One request
+  template then hits two different hosts and the responses are compared.
+- **Multiple base URLs in one suite**: define one variable per service and
+  write full-URL endpoints — exactly like Postman.
+
+---
+
 ## Variable Extraction DSL
 
 `extractVariables` extracts values from the response body and stores them as variables for subsequent TCs.
@@ -524,8 +553,12 @@ groups with settings, environments and auth profiles — this is what
     "comparisonConfig": { "ignoreFieldsRaw": "timestamp,requestId", "caseSensitive": true }
   },
   "environments": [
-    { "name": "source", "url": "https://host/legacy/api",     "authProfile": "OAuth-Legacy", "headers": [{ "key": "Accept", "value": "application/json" }] },
-    { "name": "target", "url": "https://host/modernized/api", "authProfile": "OAuth-Modern", "headers": [] }
+    { "name": "source", "url": "https://host/legacy/api",     "authProfile": "OAuth-Legacy",
+      "headers": [{ "key": "Accept", "value": "application/json" }],
+      "variables": [{ "key": "userSvc", "value": "https://legacy-users.company.com/api" }] },
+    { "name": "target", "url": "https://host/modernized/api", "authProfile": "OAuth-Modern",
+      "headers": [],
+      "variables": [{ "key": "userSvc", "value": "https://users.company.com/api" }] }
   ],
   "authProfiles": [
     { "name": "OAuth-Legacy", "type": "client_credentials", "tokenUrl": "https://host/oauth/token", "clientId": "...", "clientSecret": "...", "scope": "legacy:read" }
@@ -536,10 +569,12 @@ groups with settings, environments and auth profiles — this is what
 
 Notes:
 - XML mirrors the same structure 1:1 (Jackson-mapped) — use it for backup/restore.
-- Excel uses 3 config tabs + one `TC - <Group>` sheet per group, 29 columns:
-  GREEN definition (incl. **Test Case ID**, **Phase**, **Extract Variables**),
-  TEAL comparison override, PURPLE automation, RED results. Legacy 28-column
-  workbooks (without Test Case ID) still import.
+- Excel uses 3 config tabs + one `TC - <Group>` sheet per group, 31 columns:
+  GREEN definition (incl. **Test Case ID**, **Phase**, **Extract Variables**,
+  **Auth Profile**), TEAL comparison override, PURPLE automation, RED results
+  (incl. **Response Time**). Older 28/29/30-column workbooks still import —
+  the layout is auto-detected from the header row. The Environments tab has a
+  **Variables** column: one `key=value` per line.
 - Living examples: `GET /api/export/template/excel` and `GET /api/export/template/xml`
   download a pre-filled sample demonstrating every field, including a
   multi-request test case chained via `extractVariables` + `{{newUserId}}`.

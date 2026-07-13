@@ -59,9 +59,10 @@ public class PostmanExporter {
         Environment env  = resolveEnv(envs, suite.getSettings(), isSource);
         AuthProfile auth = resolveAuth(profiles, env);
 
-        return buildCollection(suite, dominantAuthType(auth), isOauth2(auth),
-                               buildSingleModeVariables(env, auth),
-                               env != null ? env.getHeaders() : null);
+        ArrayNode vars = buildSingleModeVariables(env, auth);
+        overrideAuthVars(suite).forEach(vars::add);
+        return buildCollection(suite, dominantAuthType(auth), isOauth2(auth), vars,
+                               env != null ? env.getHeaders() : null, profileMap(suite));
     }
 
     /**
@@ -79,9 +80,11 @@ public class PostmanExporter {
 
         boolean needsOauth2 = isOauth2(sourceAuth) || isOauth2(targetAuth);
 
+        ArrayNode bothVars = buildBothModeBaseVariable();
+        overrideAuthVars(suite).forEach(bothVars::add);
         byte[] collection = buildCollection(suite, dominantAuthType(sourceAuth), needsOauth2,
-                                            buildBothModeBaseVariable(),
-                                            unionEnvHeaders(sourceEnv, targetEnv));
+                                            bothVars,
+                                            unionEnvHeaders(sourceEnv, targetEnv), profileMap(suite));
         byte[] sourceFile = buildEnvironmentFile("Source", sourceEnv, sourceAuth);
         byte[] targetFile = buildEnvironmentFile("Target", targetEnv, targetAuth);
 
@@ -92,14 +95,14 @@ public class PostmanExporter {
 
     private byte[] buildCollection(TestSuite suite, AuthType authType,
                                    boolean needsOauth2, ArrayNode collectionVariables,
-                                   List<Param> envHeaders)
+                                   List<Param> envHeaders, Map<String, AuthProfile> profiles)
             throws Exception {
         ObjectNode root = mapper.createObjectNode();
         root.set("info",     buildInfo(suite));
         root.set("auth",     buildAuth(authType));
         if (needsOauth2) root.set("event", buildOauth2PreRequestEvent());
         root.set("variable", collectionVariables);
-        root.set("item",     buildFolders(nullSafe(suite.getTestGroups()), envHeaders));
+        root.set("item",     buildFolders(nullSafe(suite.getTestGroups()), envHeaders, profiles));
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
     }
 
@@ -122,6 +125,9 @@ public class PostmanExporter {
             for (Param h : nullSafe(env.getHeaders())) {
                 if (h.getKey() == null || h.getKey().isBlank()) continue;
                 vars.add(collectionVar(headerVar(h.getKey()), h.getValue()));
+            }
+            for (Param v : nullSafe(env.getVariables())) {
+                if (v.getKey() != null && !v.getKey().isBlank()) vars.add(collectionVar(v.getKey().trim(), v.getValue()));
             }
         }
         return vars;
@@ -241,6 +247,10 @@ public class PostmanExporter {
             for (Param h : nullSafe(env.getHeaders())) {
                 values.add(envEntry(headerVar(h.getKey()), h.getValue()));
             }
+            // Environment variables, verbatim — {{name}} in requests resolves per env
+            for (Param v : nullSafe(env.getVariables())) {
+                if (v.getKey() != null && !v.getKey().isBlank()) values.add(envEntry(v.getKey().trim(), v.getValue()));
+            }
         }
 
         ObjectNode root = mapper.createObjectNode();
@@ -272,7 +282,7 @@ public class PostmanExporter {
 
     // ─── Folders & Requests ───────────────────────────────────────────────────
 
-    private ArrayNode buildFolders(List<TestGroup> groups, List<Param> envHeaders) {
+    private ArrayNode buildFolders(List<TestGroup> groups, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         ArrayNode folders = mapper.createArrayNode();
         for (TestGroup group : groups) {
             ObjectNode folder = mapper.createObjectNode();
@@ -280,32 +290,32 @@ public class PostmanExporter {
             if (group.getDescription() != null && !group.getDescription().isBlank()) {
                 folder.put("description", group.getDescription());
             }
-            folder.set("item", buildGroupItems(nullSafe(group.getTestRequests()), envHeaders));
+            folder.set("item", buildGroupItems(nullSafe(group.getTestRequests()), envHeaders, profiles));
             folders.add(folder);
         }
         return folders;
     }
 
-    private ArrayNode buildGroupItems(List<TestRequest> testRequests, List<Param> envHeaders) {
+    private ArrayNode buildGroupItems(List<TestRequest> testRequests, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         boolean hasMultiplePhases = testRequests.stream()
                 .map(tc -> tc.getPhase() != null ? tc.getPhase() : Phase.TEST)
                 .collect(Collectors.toSet())
                 .size() > 1;
 
-        if (!hasMultiplePhases) return buildTestItems(testRequests, envHeaders);
+        if (!hasMultiplePhases) return buildTestItems(testRequests, envHeaders, profiles);
 
         ArrayNode items = mapper.createArrayNode();
         List<TestRequest> setup    = byPhase(testRequests, Phase.SETUP);
         List<TestRequest> test     = byPhase(testRequests, Phase.TEST);
         List<TestRequest> teardown = byPhase(testRequests, Phase.TEARDOWN);
-        if (!setup.isEmpty())    items.add(subFolder("Setup",      setup,    envHeaders));
+        if (!setup.isEmpty())    items.add(subFolder("Setup",      setup,    envHeaders, profiles));
         if (!test.isEmpty()) {
             ObjectNode testFolder = mapper.createObjectNode();
             testFolder.put("name", "Test Cases");
-            testFolder.set("item", buildTestItems(test, envHeaders));
+            testFolder.set("item", buildTestItems(test, envHeaders, profiles));
             items.add(testFolder);
         }
-        if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown, envHeaders));
+        if (!teardown.isEmpty()) items.add(subFolder("Teardown",   teardown, envHeaders, profiles));
         return items;
     }
 
@@ -314,7 +324,7 @@ public class PostmanExporter {
      * requests becomes a sub-folder (requests kept in declared order); a
      * 1-request test case stays a flat item — avoids one folder per request.
      */
-    private ArrayNode buildTestItems(List<TestRequest> testRequests, List<Param> envHeaders) {
+    private ArrayNode buildTestItems(List<TestRequest> testRequests, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         Map<String, List<TestRequest>> byTc = new LinkedHashMap<>();
         for (TestRequest tc : testRequests) {
             String tcId = tc.getTestCaseId() != null && !tc.getTestCaseId().isBlank()
@@ -324,18 +334,18 @@ public class PostmanExporter {
         ArrayNode items = mapper.createArrayNode();
         for (Map.Entry<String, List<TestRequest>> e : byTc.entrySet()) {
             if (e.getValue().size() > 1) {
-                items.add(subFolder(e.getKey(), e.getValue(), envHeaders));
+                items.add(subFolder(e.getKey(), e.getValue(), envHeaders, profiles));
             } else {
-                items.addAll(buildRequests(e.getValue(), envHeaders));
+                items.addAll(buildRequests(e.getValue(), envHeaders, profiles));
             }
         }
         return items;
     }
 
-    private ObjectNode subFolder(String name, List<TestRequest> testRequests, List<Param> envHeaders) {
+    private ObjectNode subFolder(String name, List<TestRequest> testRequests, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         ObjectNode folder = mapper.createObjectNode();
         folder.put("name", name);
-        folder.set("item", buildRequests(testRequests, envHeaders));
+        folder.set("item", buildRequests(testRequests, envHeaders, profiles));
         return folder;
     }
 
@@ -345,7 +355,7 @@ public class PostmanExporter {
                 .collect(Collectors.toList());
     }
 
-    private ArrayNode buildRequests(List<TestRequest> testRequests, List<Param> envHeaders) {
+    private ArrayNode buildRequests(List<TestRequest> testRequests, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         ArrayNode items = mapper.createArrayNode();
         for (TestRequest tc : testRequests) {
             ObjectNode item = mapper.createObjectNode();
@@ -353,7 +363,7 @@ public class PostmanExporter {
             if (tc.getDescription() != null && !tc.getDescription().isBlank()) {
                 item.put("description", tc.getDescription());
             }
-            item.set("request", buildRequest(tc, envHeaders));
+            item.set("request", buildRequest(tc, envHeaders, profiles));
             ArrayNode ev = buildExtractEvent(tc);
             if (ev != null) item.set("event", ev);
             items.add(item);
@@ -406,11 +416,13 @@ public class PostmanExporter {
         return events;
     }
 
-    private ObjectNode buildRequest(TestRequest tc, List<Param> envHeaders) {
+    private ObjectNode buildRequest(TestRequest tc, List<Param> envHeaders, Map<String, AuthProfile> profiles) {
         ObjectNode request = mapper.createObjectNode();
         request.put("method", tc.getMethod() != null ? tc.getMethod().name() : "GET");
         request.set("url",    buildUrl(tc));
         request.set("header", buildHeaders(tc, envHeaders));
+        ObjectNode overrideAuth = overrideAuth(tc, profiles);
+        if (overrideAuth != null) request.set("auth", overrideAuth);
         ObjectNode body = buildBody(tc);
         if (body != null) request.set("body", body);
         return request;
@@ -421,11 +433,27 @@ public class PostmanExporter {
         List<Param> qp       = nullSafe(tc.getQueryParams());
         String      rawQs    = tc.getQueryParamsAsString();
 
-        StringBuilder raw = new StringBuilder("{{baseUrl}}").append(endpoint);
+        boolean fullUrl = endpoint.startsWith("http://") || endpoint.startsWith("https://")
+                       || endpoint.startsWith("{{");
+        StringBuilder raw = new StringBuilder(fullUrl ? "" : "{{baseUrl}}").append(endpoint);
         if (!rawQs.isBlank()) raw.append("?").append(rawQs);
 
         ObjectNode url = mapper.createObjectNode();
         url.put("raw", raw.toString());
+        if (fullUrl) {
+            // Postman re-parses "raw" on import; host/path splitting below
+            // assumes a {{baseUrl}} prefix, so skip it for full URLs.
+            if (!qp.isEmpty()) {
+                ArrayNode query = mapper.createArrayNode();
+                for (Param p : qp) {
+                    ObjectNode q = mapper.createObjectNode();
+                    q.put("key", p.getKey()); q.put("value", p.getValue());
+                    query.add(q);
+                }
+                url.set("query", query);
+            }
+            return url;
+        }
 
         ArrayNode host = mapper.createArrayNode();
         host.add("{{baseUrl}}");
@@ -456,6 +484,82 @@ public class PostmanExporter {
      * application/json / urlencoded from the body mode), otherwise the env CT
      * applies; an explicit CT in the request's own headers always wins.
      */
+    /**
+     * Request-level auth override as a Postman request auth block. Bearer and
+     * Basic reference auth_<profile>_* collection variables; other types
+     * inherit the collection auth (client_credentials pre-request fetches only
+     * the environment's token).
+     */
+    private ObjectNode overrideAuth(TestRequest tc, Map<String, AuthProfile> profiles) {
+        if (tc.getAuthProfile() == null || tc.getAuthProfile().isBlank() || profiles == null) return null;
+        AuthProfile p = profiles.get(tc.getAuthProfile());
+        if (p == null || p.getType() == null) return null;
+        String n = varSafe(p.getName());
+        switch (p.getType()) {
+            case BEARER -> {
+                ObjectNode auth = mapper.createObjectNode();
+                auth.put("type", "bearer");
+                ArrayNode b = auth.putArray("bearer");
+                ObjectNode t = b.addObject();
+                t.put("key", "token"); t.put("value", "{{auth_" + n + "_token}}"); t.put("type", "string");
+                return auth;
+            }
+            case BASIC -> {
+                ObjectNode auth = mapper.createObjectNode();
+                auth.put("type", "basic");
+                ArrayNode b = auth.putArray("basic");
+                ObjectNode u = b.addObject();
+                u.put("key", "username"); u.put("value", "{{auth_" + n + "_user}}"); u.put("type", "string");
+                ObjectNode pw = b.addObject();
+                pw.put("key", "password"); pw.put("value", "{{auth_" + n + "_pass}}"); pw.put("type", "string");
+                return auth;
+            }
+            case NONE -> {
+                ObjectNode auth = mapper.createObjectNode();
+                auth.put("type", "noauth");
+                return auth;
+            }
+            default -> { return null; }
+        }
+    }
+
+    private static String varSafe(String name) {
+        return name == null ? "" : name.replaceAll("[^A-Za-z0-9_]", "_");
+    }
+
+    /** Collection variables backing every auth override used by any request. */
+    private List<ObjectNode> overrideAuthVars(TestSuite suite) {
+        Map<String, AuthProfile> profiles = profileMap(suite);
+        List<ObjectNode> out = new ArrayList<>();
+        Set<String> done = new HashSet<>();
+        for (TestGroup g : nullSafe(suite.getTestGroups())) {
+            for (TestRequest tc : nullSafe(g.getTestRequests())) {
+                String ap = tc.getAuthProfile();
+                if (ap == null || ap.isBlank() || !done.add(ap)) continue;
+                AuthProfile p = profiles.get(ap);
+                if (p == null || p.getType() == null) continue;
+                String n = varSafe(p.getName());
+                switch (p.getType()) {
+                    case BEARER -> out.add(collectionVar("auth_" + n + "_token", notBlank(p.getToken(), "")));
+                    case BASIC -> {
+                        out.add(collectionVar("auth_" + n + "_user", notBlank(p.getUsername(), "")));
+                        out.add(collectionVar("auth_" + n + "_pass", notBlank(p.getPassword(), "")));
+                    }
+                    default -> { }
+                }
+            }
+        }
+        return out;
+    }
+
+    private Map<String, AuthProfile> profileMap(TestSuite suite) {
+        Map<String, AuthProfile> m = new LinkedHashMap<>();
+        for (AuthProfile ap : nullSafe(suite.getAuthProfiles())) {
+            if (ap.getName() != null) m.put(ap.getName(), ap);
+        }
+        return m;
+    }
+
     private ArrayNode buildHeaders(TestRequest tc, List<Param> envHeaders) {
         ArrayNode headers = mapper.createArrayNode();
         Set<String> seen = new HashSet<>();

@@ -69,6 +69,10 @@ public class JmeterExporter {
              + "Results: 'View Results Tree' shows every request/response (red = HTTP >= 400 or transport error) "
              + "and appends raw samples to results.jtl in JMeter's working directory; "
              + "'Aggregate Report' gives per-request totals.\n"
+             + "Environment variables are exported as User Defined Variables; endpoints that resolve to a "
+             + "full http(s) URL are sent as-is (JMeter ignores the HTTP Defaults host for those).\n"
+             + "Request-level auth overrides: bearer/basic become a per-sampler Authorization header; "
+             + "client_credentials overrides fall back to the environment's auth.\n"
              + "Headless run with HTML dashboard: jmeter -n -t thisfile.jmx -l run.jtl -e -o report/");
         x.prop("boolProp",   "TestPlan.functional_mode", "false");
         x.prop("boolProp",   "TestPlan.tearDown_on_shutdown", "true");
@@ -77,7 +81,7 @@ public class JmeterExporter {
                "elementType", "Arguments", "guiclass", "ArgumentsPanel",
                "testclass", "Arguments", "testname", "User Defined Variables", "enabled", "true");
         x.open("collectionProp", "name", "Arguments.arguments");
-        buildUDVs(x, pu, auth);
+        buildUDVs(x, pu, auth, env);
         x.close("collectionProp");
         x.close("elementProp");
         x.close("TestPlan");
@@ -86,8 +90,12 @@ public class JmeterExporter {
 
         if (isOauth2(auth)) buildOauth2SetupGroup(x);
 
+        Map<String, AuthProfile> profiles = new LinkedHashMap<>();
+        for (AuthProfile ap : nullSafe(suite.getAuthProfiles())) {
+            if (ap.getName() != null) profiles.put(ap.getName(), ap);
+        }
         for (TestGroup g : nullSafe(suite.getTestGroups())) {
-            buildThreadGroup(x, g, pu, auth, env);
+            buildThreadGroup(x, g, pu, auth, env, profiles);
         }
 
         buildListeners(x);   // without these, a run shows and saves nothing
@@ -122,8 +130,16 @@ public class JmeterExporter {
 
     // ─── User Defined Variables ───────────────────────────────────────────────
 
-    private void buildUDVs(Xml x, ParsedUrl pu, AuthProfile auth) {
-        udv(x, "baseUrl", pu.baseUrl);
+    private void buildUDVs(Xml x, ParsedUrl pu, AuthProfile auth, Environment env) {
+        boolean userBaseUrl = false;
+        if (env != null && env.getVariables() != null) {
+            for (Param v : env.getVariables()) {
+                if (v.getKey() == null || v.getKey().isBlank()) continue;
+                udv(x, v.getKey().trim(), vars(v.getValue() != null ? v.getValue() : ""));
+                if ("baseUrl".equals(v.getKey().trim())) userBaseUrl = true;
+            }
+        }
+        if (!userBaseUrl) udv(x, "baseUrl", pu.baseUrl);
         if (auth == null || auth.getType() == null || auth.getType() == AuthType.NONE) return;
         switch (auth.getType()) {
             case BEARER ->
@@ -220,7 +236,7 @@ public class JmeterExporter {
 
     // ─── Thread Group ─────────────────────────────────────────────────────────
 
-    private void buildThreadGroup(Xml x, TestGroup group, ParsedUrl pu, AuthProfile auth, Environment env) {
+    private void buildThreadGroup(Xml x, TestGroup group, ParsedUrl pu, AuthProfile auth, Environment env, Map<String, AuthProfile> profiles) {
         x.open("ThreadGroup", "guiclass", "ThreadGroupGui", "testclass", "ThreadGroup",
                "testname", group.getName(), "enabled", "true");
         x.prop("stringProp", "ThreadGroup.on_sample_error", "continue");
@@ -242,7 +258,7 @@ public class JmeterExporter {
 
         String envCt = envContentType(env);
         for (TestRequest tc : orderByPhase(nullSafe(group.getTestRequests()))) {
-            buildHttpSampler(x, tc, pu, envCt);
+            buildHttpSampler(x, tc, pu, envCt, profiles);
         }
 
         x.close("hashTree");
@@ -317,7 +333,7 @@ public class JmeterExporter {
 
     // ─── HTTP Sampler ─────────────────────────────────────────────────────────
 
-    private void buildHttpSampler(Xml x, TestRequest tc, ParsedUrl pu, String envCt) {
+    private void buildHttpSampler(Xml x, TestRequest tc, ParsedUrl pu, String envCt, Map<String, AuthProfile> profiles) {
         String method  = tc.getMethod() != null ? tc.getMethod().name() : "GET";
         String path    = pu.basePath + notBlank(tc.getEndpoint(), "");
         String qs      = tc.getQueryParamsAsString();
@@ -339,7 +355,7 @@ public class JmeterExporter {
         buildBody(x, tc);
         x.close("HTTPSamplerProxy");
         x.open("hashTree");
-        buildPerRequestHeaders(x, tc, contentTypeFor(tc, envCt));
+        buildPerRequestHeaders(x, tc, contentTypeFor(tc, envCt), overrideAuthHeader(tc, profiles));
         buildJsonExtractor(x, tc);
         x.close("hashTree");
     }
@@ -413,7 +429,26 @@ public class JmeterExporter {
         return envCt;
     }
 
-    private void buildPerRequestHeaders(Xml x, TestRequest tc, String contentType) {
+    /**
+     * Authorization value for a request-level auth override. Bearer and Basic
+     * are emitted as a per-sampler header; client_credentials overrides cannot
+     * be honored here (the plan's setup group fetches only the environment's
+     * token) — those fall back to the environment auth, as noted in the plan
+     * comments.
+     */
+    private String overrideAuthHeader(TestRequest tc, Map<String, AuthProfile> profiles) {
+        if (tc.getAuthProfile() == null || tc.getAuthProfile().isBlank()) return null;
+        AuthProfile p = profiles.get(tc.getAuthProfile());
+        if (p == null || p.getType() == null) return null;
+        return switch (p.getType()) {
+            case BEARER -> "Bearer " + notBlank(p.getToken(), "your-bearer-token");
+            case BASIC  -> "Basic " + Base64.getEncoder().encodeToString(
+                    (notBlank(p.getUsername(), "") + ":" + notBlank(p.getPassword(), "")).getBytes());
+            default -> null;
+        };
+    }
+
+    private void buildPerRequestHeaders(Xml x, TestRequest tc, String contentType, String overrideAuth) {
         List<String[]> parsed = new ArrayList<>();
         if (tc.getHeaders() != null && !tc.getHeaders().isBlank()) {
             for (String line : tc.getHeaders().split("\\n")) {
@@ -422,6 +457,7 @@ public class JmeterExporter {
             }
         }
         if (contentType != null) parsed.add(new String[]{ "Content-Type", contentType });
+        if (overrideAuth != null) parsed.add(new String[]{ "Authorization", overrideAuth });
         if (parsed.isEmpty()) return;
         x.open("HeaderManager", "guiclass", "HeaderPanel",
                "testclass", "HeaderManager", "testname", "Request Headers", "enabled", "true");

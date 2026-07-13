@@ -131,7 +131,20 @@ public class ExcelImportService {
             if (row == null) continue;
             String name = cell(row, 0);
             if (name.isEmpty()) continue;
-            list.add(new Environment(name, cell(row, 1), cell(row, 2), parseHeadersEncoded(cell(row, 3))));
+            Environment env = new Environment(name, cell(row, 1), cell(row, 2), parseHeadersEncoded(cell(row, 3)));
+            env.setVariables(parseVarsEncoded(cell(row, 4)));
+            list.add(env);
+        }
+        return list;
+    }
+
+    /** "key=value" per line (commas also accepted) → List<Param>. */
+    private List<Param> parseVarsEncoded(String encoded) {
+        List<Param> list = new ArrayList<>();
+        if (encoded == null || encoded.isBlank()) return list;
+        for (String pair : encoded.split("\\r?\\n|,")) {
+            int idx = pair.indexOf('=');
+            if (idx > 0) list.add(new Param(pair.substring(0, idx).trim(), pair.substring(idx + 1).trim()));
         }
         return list;
     }
@@ -195,6 +208,10 @@ public class ExcelImportService {
         // Layout detection: new 29-col sheets have "Test Case ID" as the
         // second header (row index 6, col 1); legacy 28-col sheets have "Name".
         Row headerRow = sheet.getRow(6);
+        // 31-col layout adds "Auth Profile" after Extract Variables (col 15
+        // when Test Case ID is present); older 28/29/30-col sheets lack it.
+        boolean hasAuthProfile = headerRow != null
+                && "Auth Profile".equalsIgnoreCase(cell(headerRow, 14 + (newLayout ? 1 : 0)));
         boolean newLayout = headerRow != null
                 && "test case id".equalsIgnoreCase(cell(headerRow, 1));
 
@@ -202,18 +219,19 @@ public class ExcelImportService {
         for (int r = 7; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null || cell(row, 0).isEmpty()) continue;
-            group.addTestRequest(parseTestRequestRow(row, newLayout));
+            group.addTestRequest(parseTestRequestRow(row, newLayout, hasAuthProfile));
         }
         group.normalize();
         return group;
     }
 
-    private TestRequest parseTestRequestRow(Row row, boolean newLayout) {
+    private TestRequest parseTestRequestRow(Row row, boolean newLayout, boolean hasAuthProfile) {
         TestRequest tc = new TestRequest();
 
-        // Offset: new layout inserts "Test Case ID" at column 1,
-        // shifting everything after ID by +1.
+        // Offsets: "Test Case ID" at column 1 shifts everything after ID by +1;
+        // "Auth Profile" after Extract Variables shifts TEAL and later by +1 more.
         int o = newLayout ? 1 : 0;
+        int a = hasAuthProfile ? 1 : 0;
 
         // ── GREEN ────────────────────────────────────────────────────────────
         tc.setId(cell(row, 0));
@@ -234,13 +252,17 @@ public class ExcelImportService {
         tc.setHeaders(cell(row, 11 + o));
         tc.setAuthor(cell(row, 12 + o));
         tc.setExtractVariables(cell(row, 13 + o));
+        if (hasAuthProfile) {
+            String ap = cell(row, 14 + o);
+            tc.setAuthProfile(ap.isEmpty() ? null : ap);
+        }
 
         // ── TEAL ─────────────────────────────────────────────────────────────
-        String ignoreFields = cell(row, 14 + o);
-        String ignoreOrder  = cell(row, 15 + o);
-        String cmpErrors    = cell(row, 16 + o);
-        String numTol       = cell(row, 17 + o);
-        String caseSens     = cell(row, 18 + o);
+        String ignoreFields = cell(row, 14 + o + a);
+        String ignoreOrder  = cell(row, 15 + o + a);
+        String cmpErrors    = cell(row, 16 + o + a);
+        String numTol       = cell(row, 17 + o + a);
+        String caseSens     = cell(row, 18 + o + a);
 
         if (!ignoreFields.isEmpty() || !ignoreOrder.isEmpty() || !cmpErrors.isEmpty()
                 || !numTol.isEmpty() || !caseSens.isEmpty()) {
@@ -254,10 +276,10 @@ public class ExcelImportService {
         }
 
         // ── PURPLE ───────────────────────────────────────────────────────────
-        String expStatus  = cell(row, 19 + o);
-        String expBody    = cell(row, 20 + o);
-        String expHeaders = cell(row, 21 + o);
-        String maxRt      = cell(row, 22 + o);
+        String expStatus  = cell(row, 19 + o + a);
+        String expBody    = cell(row, 20 + o + a);
+        String expHeaders = cell(row, 21 + o + a);
+        String maxRt      = cell(row, 22 + o + a);
 
         if (!expStatus.isEmpty() || !expBody.isEmpty() || !expHeaders.isEmpty() || !maxRt.isEmpty()) {
             AutomationConfig auto = new AutomationConfig();
@@ -269,15 +291,15 @@ public class ExcelImportService {
         }
 
         // ── RED ──────────────────────────────────────────────────────────────
-        String overallStatus = cell(row, 23 + o);
+        String overallStatus = cell(row, 23 + o + a);
         if (!overallStatus.isEmpty()) {
             TestResult result = new TestResult();
             result.setStatus(parseEnum(ExecutionStatus.class, overallStatus.toUpperCase(), ExecutionStatus.PENDING));
-            result.setModeRun(cell(row, 24 + o));
-            result.setComparisonResult(cell(row, 25 + o));
-            result.setAssertionResult(cell(row, 26 + o));
-            result.setExecutedAt(cell(row, 27 + o));
-            parseResponseTimes(cell(row, 28 + o), result);   // column may be absent in older files
+            result.setModeRun(cell(row, 24 + o + a));
+            result.setComparisonResult(cell(row, 25 + o + a));
+            result.setAssertionResult(cell(row, 26 + o + a));
+            result.setExecutedAt(cell(row, 27 + o + a));
+            parseResponseTimes(cell(row, 28 + o + a), result);   // column may be absent in older files
             tc.setResult(result);
         }
 

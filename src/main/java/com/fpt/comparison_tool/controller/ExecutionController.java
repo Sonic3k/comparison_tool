@@ -138,8 +138,10 @@ public class ExecutionController {
         Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
         Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
 
-        AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
-        AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
+        // Request-level auth override wins over the environment's profile
+        String override = tc.getAuthProfile() != null && !tc.getAuthProfile().isBlank() ? tc.getAuthProfile() : null;
+        AuthProfile sourceAuth = findProfile(suite, override != null ? override : (sourceEnv != null ? sourceEnv.getAuthProfile() : null));
+        AuthProfile targetAuth = findProfile(suite, override != null ? override : (targetEnv != null ? targetEnv.getAuthProfile() : null));
 
         Map<String, String> result = new HashMap<>();
         result.put("source", curlBuilder.build(sourceEnv, tc, sourceAuth));

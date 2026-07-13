@@ -74,6 +74,10 @@ public class BrunoExporter {
     // ─── Collection (OpenAPI 3.0 YAML) ────────────────────────────────────────
 
     private byte[] buildCollection(TestSuite suite, Environment env, AuthProfile auth) throws Exception {
+        Map<String, AuthProfile> profiles = new LinkedHashMap<>();
+        for (AuthProfile ap : suite.getAuthProfiles() != null ? suite.getAuthProfiles() : java.util.List.<AuthProfile>of()) {
+            if (ap.getName() != null) profiles.put(ap.getName(), ap);
+        }
         ObjectNode root = jsonMapper.createObjectNode();
         root.put("openapi", "3.0.0");
 
@@ -100,8 +104,9 @@ public class BrunoExporter {
             for (TestRequest tc : nullSafe(group.getTestRequests())) {
                 if (!tc.isEnabled()) continue;
                 addPath(paths, schemas, requestBodies, securitySchemes,
-                        tc, group, baseUrl, authType, usedOpIds,
-                        env != null ? env.getHeaders() : null);
+                        tc, group, baseUrl, effectiveAuthType(tc, profiles, authType), usedOpIds,
+                        env != null ? env.getHeaders() : null,
+                        envVarMap(env));
             }
         }
 
@@ -117,8 +122,18 @@ public class BrunoExporter {
     private void addPath(ObjectNode paths, ObjectNode schemas, ObjectNode requestBodies,
                          ObjectNode securitySchemes, TestRequest tc, TestGroup group,
                          String baseUrl, AuthType authType, Set<String> usedOpIds,
-                         List<Param> envHeaders) {
-        String endpoint = tc.getEndpoint() != null ? tc.getEndpoint() : "/";
+                         List<Param> envHeaders, Map<String, String> envVars) {
+        // OpenAPI needs concrete URLs, so environment variables are resolved
+        // at export time; a full http(s) result becomes this operation's server.
+        String endpoint = subEnvVars(tc.getEndpoint() != null ? tc.getEndpoint() : "/", envVars);
+        String opServer = baseUrl;
+        if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+            try {
+                java.net.URI u = java.net.URI.create(endpoint);
+                opServer = u.getScheme() + "://" + u.getAuthority();
+                endpoint = u.getRawPath() != null && !u.getRawPath().isEmpty() ? u.getRawPath() : "/";
+            } catch (Exception ignored) { /* keep as-is; better odd than lost */ }
+        }
         if (!endpoint.startsWith("/")) endpoint = "/" + endpoint;
 
         String method = tc.getMethod() != null ? tc.getMethod().name().toLowerCase() : "get";
@@ -201,7 +216,7 @@ public class BrunoExporter {
         }
 
         // Server (per-operation) — Bruno honors this when each op points to a different host
-        operation.putArray("servers").addObject().put("url", baseUrl);
+        operation.putArray("servers").addObject().put("url", opServer);
     }
 
     private void addJsonBody(ObjectNode operation, ObjectNode schemas, ObjectNode requestBodies,
@@ -240,6 +255,31 @@ public class BrunoExporter {
         }
         schema.set("example", example);
         rb.put("required", true);
+    }
+
+    /** Request-level auth override changes this operation's security scheme. */
+    private AuthType effectiveAuthType(TestRequest tc, Map<String, AuthProfile> profiles, AuthType envType) {
+        if (tc.getAuthProfile() == null || tc.getAuthProfile().isBlank() || profiles == null) return envType;
+        AuthProfile p = profiles.get(tc.getAuthProfile());
+        return p != null && p.getType() != null ? p.getType() : envType;
+    }
+
+    private Map<String, String> envVarMap(Environment env) {
+        Map<String, String> vars = new LinkedHashMap<>();
+        if (env != null && env.getVariables() != null) {
+            for (Param p : env.getVariables()) {
+                if (p.getKey() != null && !p.getKey().isBlank()) vars.put(p.getKey().trim(), p.getValue() != null ? p.getValue() : "");
+            }
+        }
+        if (env != null && env.getUrl() != null && !vars.containsKey("baseUrl")) vars.put("baseUrl", env.getUrl());
+        return vars;
+    }
+
+    private String subEnvVars(String text, Map<String, String> vars) {
+        if (text == null || text.isEmpty() || vars == null || vars.isEmpty()) return text;
+        String out = text;
+        for (Map.Entry<String, String> e : vars.entrySet()) out = out.replace("{{" + e.getKey() + "}}", e.getValue());
+        return out;
     }
 
     private ObjectNode buildSecurityScheme(AuthType authType) {

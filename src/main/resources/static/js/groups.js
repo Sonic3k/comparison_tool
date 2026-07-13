@@ -348,6 +348,7 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-testCaseId', tc.testCaseId && tc.testCaseId !== tc.id ? tc.testCaseId : '');
     sv('tc-phase', tc.phase || 'test');
     sv('tc-extract', tc.extractVariables || '');
+    populateAuthProfileSelect(tc.authProfile || '');
     sv('tc-endpoint', tc.endpoint); sv('tc-author', tc.author);
     sv('tc-body', tc.jsonBody);     sv('tc-headers', tc.headers);
     sv('tc-query', (tc.queryParams || []).map(p => p.key + '=' + p.value).join('\n'));
@@ -367,6 +368,7 @@ function showCaseModal(groupName, tc = null) {
     ['tc-id','tc-name','tc-desc','tc-endpoint','tc-author','tc-body',
      'tc-headers','tc-query','tc-form','tc-ignoreFields','tc-tolerance',
      'tc-expStatus','tc-expBody','tc-expHeaders','tc-maxRt','tc-testCaseId','tc-extract'].forEach(id => sv(id, ''));
+    populateAuthProfileSelect('');
     sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-verificationMode', 'comparison');
     sv('tc-phase', 'test');
     sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
@@ -409,6 +411,7 @@ async function saveTestCase() {
     enabled: g('tc-enabled') === 'true', verificationMode: mode, method: g('tc-method'),
     testCaseId: g('tc-testCaseId') || null, phase: g('tc-phase') || 'test',
     extractVariables: g('tc-extract'),
+    authProfile: g('tc-authprofile') || null,
     endpoint: g('tc-endpoint'), author: g('tc-author'),
     jsonBody: g('tc-body'), headers: g('tc-headers'),
     queryParams: parseLines(g('tc-query')),
@@ -495,6 +498,18 @@ async function showCurl(groupName, caseId) {
   document.getElementById('curlSource').textContent = source || '# No source env';
   document.getElementById('curlTarget').textContent = target || '# No target env';
   openModal('curlModal');
+}
+
+/** Options: environment default + every configured auth profile. */
+function populateAuthProfileSelect(selected) {
+  const sel = document.getElementById('tc-authprofile');
+  if (!sel) return;
+  const profiles = (suite && suite.authProfiles) || [];
+  sel.innerHTML = '<option value="">(environment default)</option>'
+    + profiles.map(p => `<option value="${esc(p.name)}"${p.name === selected ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  if (selected && !profiles.some(p => p.name === selected)) {
+    sel.innerHTML += `<option value="${esc(selected)}" selected>${esc(selected)} (missing)</option>`;
+  }
 }
 
 function copyCurl(which) {
@@ -940,7 +955,8 @@ function renderCaseDrawer() {
             + drawerPre(prettyJson(res.targetResponse) || '—');
     }
     if (res.executedAt) {
-      html += `<div style="font-size:11px;color:#9ca3af;margin-top:8px">Executed: ${esc(res.executedAt)} · mode ${esc(mode)}</div>`;
+      const authNote = tc.authProfile ? ` · auth: ${esc(tc.authProfile)}` : '';
+      html += `<div style="font-size:11px;color:#9ca3af;margin-top:8px">Executed: ${esc(res.executedAt)} · mode ${esc(mode)}${authNote}</div>`;
     }
   }
 
