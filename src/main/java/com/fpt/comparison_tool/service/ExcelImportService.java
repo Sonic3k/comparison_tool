@@ -42,6 +42,7 @@ import java.util.List;
  *         26  Comparison Result
  *         27  Assertion Result
  *         28  Executed At
+ *         29  Response Time (ms) — "95" or "src 120 · tgt 95"; absent in older files
  *
  * Legacy 28-column workbooks (no "Test Case ID" column) are still accepted:
  * the layout is auto-detected from the header row (row index 6, column 1) and
@@ -276,6 +277,7 @@ public class ExcelImportService {
             result.setComparisonResult(cell(row, 25 + o));
             result.setAssertionResult(cell(row, 26 + o));
             result.setExecutedAt(cell(row, 27 + o));
+            parseResponseTimes(cell(row, 28 + o), result);   // column may be absent in older files
             tc.setResult(result);
         }
 
@@ -292,6 +294,19 @@ public class ExcelImportService {
             if (!part.isEmpty()) params.add(Param.of(part));
         }
         return params;
+    }
+
+    /** Accepts "95", "src 120 · tgt 95", or "src 120"; anything else is ignored. */
+    private void parseResponseTimes(String raw, TestResult result) {
+        if (raw == null || raw.isBlank()) return;
+        String v = raw.trim();
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("src\\s*(\\d+)").matcher(v);
+            if (m.find()) result.setSourceTimeMs(Long.parseLong(m.group(1)));
+            m = java.util.regex.Pattern.compile("tgt\\s*(\\d+)").matcher(v);
+            if (m.find()) result.setTargetTimeMs(Long.parseLong(m.group(1)));
+            else if (v.matches("\\d+")) result.setTargetTimeMs(Long.parseLong(v));
+        } catch (NumberFormatException ignored) { }
     }
 
     private String cell(Row row, int col) {

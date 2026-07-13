@@ -915,11 +915,11 @@ function renderCaseDrawer() {
         : `<div style="color:#059669;font-size:12px;margin-bottom:10px">✓ No differences</div>`;
       html += `<div class="drawer-2col" style="margin-bottom:14px">
         <div>
-          <div class="expand-label">Source Response (${esc(res.sourceStatus || '—')})</div>
+          <div class="expand-label">Source Response (${esc(res.sourceStatus || '—')}${res.sourceTimeMs != null ? ' · ' + res.sourceTimeMs + ' ms' : ''})</div>
           ${drawerPre(prettyJson(res.sourceResponse) || '—')}
         </div>
         <div>
-          <div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>
+          <div class="expand-label">Target Response (${esc(res.targetStatus || '—')}${res.targetTimeMs != null ? ' · ' + res.targetTimeMs + ' ms' : ''})</div>
           ${drawerPre(prettyJson(res.targetResponse) || '—')}
         </div>
       </div>`;
@@ -931,12 +931,12 @@ function renderCaseDrawer() {
         ? `<div style="font-size:12px;font-family:Consolas,monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre-wrap">${lines.map(l => `<span style="color:${l.startsWith('✗') ? '#dc2626' : '#059669'}">${esc(l)}</span>`).join('\n')}</div>`
         : `<div style="color:#059669;font-size:12px;margin-bottom:12px">✓ All assertions passed</div>`;
       if (!hasCmp && res.targetResponse) {
-        html += `<div class="expand-label">Target Response (${esc(res.targetStatus || '—')})</div>` + drawerPre(prettyJson(res.targetResponse));
+        html += `<div class="expand-label">Target Response (${esc(res.targetStatus || '—')}${res.targetTimeMs != null ? ' · ' + res.targetTimeMs + ' ms' : ''})</div>` + drawerPre(prettyJson(res.targetResponse));
       }
     }
     // NONE mode (plumbing calls): no comparison, no assertions — still show what came back
     if (!hasCmp && !hasAuto && (res.targetStatus || res.targetResponse)) {
-      html += `<div class="expand-label" style="margin-top:6px">Target Response (${esc(res.targetStatus || '—')})</div>`
+      html += `<div class="expand-label" style="margin-top:6px">Target Response (${esc(res.targetStatus || '—')}${res.targetTimeMs != null ? ' · ' + res.targetTimeMs + ' ms' : ''})</div>`
             + drawerPre(prettyJson(res.targetResponse) || '—');
     }
     if (res.executedAt) {

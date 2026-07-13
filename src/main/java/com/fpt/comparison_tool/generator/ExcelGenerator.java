@@ -186,8 +186,9 @@ public class ExcelGenerator {
             "Numeric Tolerance", "Case Sensitive",
             // PURPLE 20-23
             "Expected Status", "Expected Body (Assertions)", "Expected Headers", "Max Response Time (ms)",
-            // RED 24-28
-            "Overall Status", "Mode Run", "Comparison Result", "Assertion Result", "Executed At"
+            // RED 24-29
+            "Overall Status", "Mode Run", "Comparison Result", "Assertion Result", "Executed At",
+            "Response Time (ms)"
         };
         Row r6 = sheet.createRow(6);
         for (int i = 0; i < headers.length; i++) {
@@ -239,14 +240,15 @@ public class ExcelGenerator {
             row.createCell(26).setCellValue(res != null ? nvl(res.getComparisonResult()) : "");
             row.createCell(27).setCellValue(res != null ? nvl(res.getAssertionResult()) : "");
             row.createCell(28).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
+            row.createCell(29).setCellValue(res != null ? formatResponseTimes(res) : "");
         }
 
-        // Column widths (29 cols)
+        // Column widths (30 cols)
         int[] widths = {
             9, 14, 22, 36, 8, 13, 9, 8, 28, 22, 18, 30, 18, 20, 28,   // GREEN 0-14
             16, 15, 16, 13, 12,                                          // TEAL 15-19
             13, 36, 20, 14,                                               // PURPLE 20-23
-            12, 13, 36, 36, 18                                            // RED 24-28
+            12, 13, 36, 36, 18                                            // RED 24-28, 16
         };
         for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
     }
@@ -265,6 +267,15 @@ public class ExcelGenerator {
         Cell cell = row.createCell(col);
         cell.setCellValue(value);
         cell.setCellStyle(style);
+    }
+
+    /** "src 120 · tgt 95" (comparison/both) or "95" (automation/none). */
+    private static String formatResponseTimes(TestResult res) {
+        Long src = res.getSourceTimeMs(), tgt = res.getTargetTimeMs();
+        if (src != null && tgt != null) return "src " + src + " \u00b7 tgt " + tgt;
+        if (tgt != null) return String.valueOf(tgt);
+        if (src != null) return "src " + src;
+        return "";
     }
 
     private String nvl(String s) { return s != null ? s : ""; }

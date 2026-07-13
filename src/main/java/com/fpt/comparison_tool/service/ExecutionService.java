@@ -433,13 +433,16 @@ public class ExecutionService {
     private String runNone(TestRequest resolved, TestRequest original, TestGroup group, TestSuite suite,
                            Environment targetEnv, AuthProfile targetAuth,
                            ExecutionProgress progress, String timestamp) throws Exception {
+        long tgtStart = System.currentTimeMillis();
         ResponseEntity<String> targetResp = callEndpoint(targetEnv, resolved, targetAuth);
+        long tgtTime = System.currentTimeMillis() - tgtStart;
 
         int tgtStatus = targetResp.getStatusCode().value();
         String tgtBody = targetResp.getBody();
 
         TestResult r = new TestResult();
         r.setModeRun(VerificationMode.NONE.getValue());
+        r.setTargetTimeMs(tgtTime);
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setTargetResponse(tgtBody);
         r.setExecutedAt(timestamp);
@@ -463,9 +466,13 @@ public class ExecutionService {
         AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
         AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
 
+        long srcStart = System.currentTimeMillis();
         ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, resolved, sourceAuth);
+        long srcTime = System.currentTimeMillis() - srcStart;
         if (delayMs > 0) Thread.sleep(delayMs);
+        long tgtStart = System.currentTimeMillis();
         ResponseEntity<String> targetResp = callEndpoint(targetEnv, resolved, targetAuth);
+        long tgtTime = System.currentTimeMillis() - tgtStart;
 
         int srcStatus = sourceResp.getStatusCode().value();
         int tgtStatus = targetResp.getStatusCode().value();
@@ -474,6 +481,8 @@ public class ExecutionService {
 
         TestResult r = new TestResult();
         r.setModeRun(VerificationMode.COMPARISON.getValue());
+        r.setSourceTimeMs(srcTime);
+        r.setTargetTimeMs(tgtTime);
         r.setSourceStatus(String.valueOf(srcStatus));
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setSourceResponse(srcBody);
@@ -516,6 +525,7 @@ public class ExecutionService {
 
         TestResult r = new TestResult();
         r.setModeRun(VerificationMode.AUTOMATION.getValue());
+        r.setTargetTimeMs(elapsed);
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setTargetResponse(tgtBody);
         r.setExecutedAt(timestamp);
@@ -551,7 +561,9 @@ public class ExecutionService {
         AuthProfile sourceAuth = findProfile(suite, sourceEnv != null ? sourceEnv.getAuthProfile() : null);
         AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
 
+        long srcStart = System.currentTimeMillis();
         ResponseEntity<String> sourceResp = callEndpoint(sourceEnv, resolved, sourceAuth);
+        long srcTime = System.currentTimeMillis() - srcStart;
         if (delayMs > 0) Thread.sleep(delayMs);
         long start = System.currentTimeMillis();
         ResponseEntity<String> targetResp = callEndpoint(targetEnv, resolved, targetAuth);
@@ -564,6 +576,8 @@ public class ExecutionService {
 
         TestResult r = new TestResult();
         r.setModeRun(VerificationMode.BOTH.getValue());
+        r.setSourceTimeMs(srcTime);
+        r.setTargetTimeMs(elapsed);
         r.setSourceStatus(String.valueOf(srcStatus));
         r.setTargetStatus(String.valueOf(tgtStatus));
         r.setSourceResponse(srcBody);

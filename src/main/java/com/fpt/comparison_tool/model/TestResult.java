@@ -19,6 +19,8 @@ public class TestResult {
 
     // ── Transport / infrastructure failure (status = ERROR) ───────────────────
     private String errorMessage;         // human-readable reason: timeout, unknown host, refused…
+    private Long sourceTimeMs;            // response time of the last run, per side (ms)
+    private Long targetTimeMs;
 
     public TestResult() {
         this.status = ExecutionStatus.PENDING;
@@ -35,6 +37,11 @@ public class TestResult {
 
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+
+    public Long getSourceTimeMs() { return sourceTimeMs; }
+    public void setSourceTimeMs(Long sourceTimeMs) { this.sourceTimeMs = sourceTimeMs; }
+    public Long getTargetTimeMs() { return targetTimeMs; }
+    public void setTargetTimeMs(Long targetTimeMs) { this.targetTimeMs = targetTimeMs; }
 
     public String getModeRun() { return modeRun; }
     public void setModeRun(String modeRun) { this.modeRun = modeRun; }
