@@ -208,12 +208,12 @@ public class ExcelImportService {
         // Layout detection: new 29-col sheets have "Test Case ID" as the
         // second header (row index 6, col 1); legacy 28-col sheets have "Name".
         Row headerRow = sheet.getRow(6);
+        boolean newLayout = headerRow != null
+                && "test case id".equalsIgnoreCase(cell(headerRow, 1));
         // 31-col layout adds "Auth Profile" after Extract Variables (col 15
         // when Test Case ID is present); older 28/29/30-col sheets lack it.
         boolean hasAuthProfile = headerRow != null
                 && "Auth Profile".equalsIgnoreCase(cell(headerRow, 14 + (newLayout ? 1 : 0)));
-        boolean newLayout = headerRow != null
-                && "test case id".equalsIgnoreCase(cell(headerRow, 1));
 
         // Data starts at row 8 (0-based index 7)
         for (int r = 7; r <= sheet.getLastRowNum(); r++) {
