@@ -380,6 +380,7 @@ public class ExecutionService {
         TestRequest resolved = resolveVariables(tc, variables);
 
         try {
+            failOnUnresolvedVars(resolved);
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
             AuthProfile targetAuth = findProfile(suite, targetEnv != null ? targetEnv.getAuthProfile() : null);
 
@@ -610,11 +611,41 @@ public class ExecutionService {
     /**
      * Parse "varName=$.jsonPath, varName2=$.other.path" and extract values from response.
      */
+    private static final java.util.regex.Pattern VAR_TOKEN =
+            java.util.regex.Pattern.compile("\\{\\{([A-Za-z0-9_]+)\\}\\}");
+
+    /**
+     * Any {{var}} still present after substitution means the variable was never
+     * produced (extracting request failed/skipped, or its extractVariables did
+     * not match the response). Failing here gives a readable reason instead of
+     * Spring's \"Not enough variable values available to expand '{...'\".
+     */
+    private void failOnUnresolvedVars(TestRequest r) {
+        Set<String> unresolved = new LinkedHashSet<>();
+        collectVars(r.getEndpoint(), unresolved);
+        collectVars(r.getHeaders(), unresolved);
+        collectVars(r.getJsonBody(), unresolved);
+        if (r.getQueryParams() != null) r.getQueryParams().forEach(p2 -> collectVars(p2.getValue(), unresolved));
+        if (r.getFormParams()  != null) r.getFormParams().forEach(p2 -> collectVars(p2.getValue(), unresolved));
+        if (unresolved.isEmpty()) return;
+        throw new IllegalStateException("Unresolved variables " + unresolved
+                + " — the request that extracts them failed or was skipped, "
+                + "or its extractVariables didn't match the response "
+                + "(format: one var=$.json.path per line)");
+    }
+
+    private void collectVars(String text, Set<String> out) {
+        if (text == null || text.isEmpty()) return;
+        java.util.regex.Matcher m = VAR_TOKEN.matcher(text);
+        while (m.find()) out.add("{{" + m.group(1) + "}}");
+    }
+
     private void extractVariables(String responseBody, String extractDsl, Map<String, String> variables) {
         if (responseBody == null || responseBody.isBlank()) return;
         try {
             JsonNode root = objectMapper.readTree(responseBody);
-            for (String entry : extractDsl.split(",")) {
+            // Documented format: one "var=$.path" per line; commas also accepted
+            for (String entry : extractDsl.split("\\r?\\n|,")) {
                 entry = entry.trim();
                 int eq = entry.indexOf('=');
                 if (eq <= 0) continue;
