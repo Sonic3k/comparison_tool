@@ -178,8 +178,9 @@ function openGroupDetail(name) {
 
 function updateGroupDetailHeader(grp) {
   document.getElementById('detailGroupName').textContent = grp.name;
-  document.getElementById('detailGroupSub').textContent =
-    [grp.description, grp.owner ? '· ' + grp.owner : ''].filter(Boolean).join(' ');
+  const subText = [grp.description, grp.owner ? '· ' + grp.owner : ''].filter(Boolean).join(' ');
+  document.getElementById('detailGroupSub').textContent = subText;
+  document.getElementById('detailGroupSub').title = subText;   // full text on hover — clamps at 2 lines
 
   // Update toggle button in detail header
   const btn = document.getElementById('btnToggleGroup');
@@ -891,6 +892,7 @@ function renderCaseDrawer() {
   stEl.textContent = st;
   stEl.className   = 'bs s-' + st;
   document.getElementById('drawerCaseId').textContent = tc.id;
+  document.getElementById('drawerCaseId').title = tc.id;   // full id on hover — header ellipsizes
   document.getElementById('drawerRerunBtn').onclick = () => drawerRerun();
   document.getElementById('drawerCurlBtn').onclick  = () => showCurl(drawerCase.group, drawerCase.id);
 
