@@ -106,7 +106,7 @@ public class BrunoExporter {
                 addPath(paths, schemas, requestBodies, securitySchemes,
                         tc, group, baseUrl, effectiveAuthType(tc, profiles, authType), usedOpIds,
                         env != null ? env.getHeaders() : null,
-                        envVarMap(env));
+                        mergedVars(suite, env));
             }
         }
 
@@ -264,11 +264,24 @@ public class BrunoExporter {
         return p != null && p.getType() != null ? p.getType() : envType;
     }
 
+    /** Env variables + session globals (globals win) — engine precedence. */
+    private Map<String, String> mergedVars(TestSuite suite, Environment env) {
+        Map<String, String> m = envVarMap(env);
+        if (suite.getGlobalVariables() != null) {
+            for (GlobalVariable v : suite.getGlobalVariables()) {
+                String k = TestSuite.bareVarName(v.getName());
+                if (k != null && !k.isBlank()) m.put(k, v.getValue() != null ? v.getValue() : "");
+            }
+        }
+        return m;
+    }
+
     private Map<String, String> envVarMap(Environment env) {
         Map<String, String> vars = new LinkedHashMap<>();
         if (env != null && env.getVariables() != null) {
             for (Param p : env.getVariables()) {
-                if (p.getKey() != null && !p.getKey().isBlank()) vars.put(p.getKey().trim(), p.getValue() != null ? p.getValue() : "");
+                String k = TestSuite.bareVarName(p.getKey());
+                if (k != null && !k.isBlank()) vars.put(k, p.getValue() != null ? p.getValue() : "");
             }
         }
         if (env != null && env.getUrl() != null && !vars.containsKey("baseUrl")) vars.put("baseUrl", env.getUrl());

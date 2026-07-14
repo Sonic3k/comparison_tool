@@ -55,8 +55,21 @@ public class TestSuite {
     }
     public void setGlobalVariables(List<GlobalVariable> v) { this.globalVariables = v; }
 
+    /**
+     * Bare variable name: "{{abc}}", "${abc}" or " abc " all mean "abc" —
+     * the braces are usage syntax, never part of the name.
+     */
+    public static String bareVarName(String name) {
+        if (name == null) return null;
+        String n = name.trim();
+        if (n.startsWith("{{") && n.endsWith("}}")) n = n.substring(2, n.length() - 2);
+        else if (n.startsWith("${") && n.endsWith("}")) n = n.substring(2, n.length() - 1);
+        return n.trim();
+    }
+
     /** Upsert by name — parallel flows write concurrently; last write wins. */
     public synchronized void putGlobalVariable(String name, String value, String updatedAt) {
+        name = bareVarName(name);
         if (name == null || name.isBlank()) return;
         for (GlobalVariable v : getGlobalVariables()) {
             if (name.equals(v.getName())) { v.setValue(value); v.setUpdatedAt(updatedAt); return; }

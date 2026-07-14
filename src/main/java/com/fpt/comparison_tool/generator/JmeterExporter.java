@@ -81,7 +81,7 @@ public class JmeterExporter {
                "elementType", "Arguments", "guiclass", "ArgumentsPanel",
                "testclass", "Arguments", "testname", "User Defined Variables", "enabled", "true");
         x.open("collectionProp", "name", "Arguments.arguments");
-        buildUDVs(x, pu, auth, env);
+        buildUDVs(x, pu, auth, env, suite);
         x.close("collectionProp");
         x.close("elementProp");
         x.close("TestPlan");
@@ -130,16 +130,26 @@ public class JmeterExporter {
 
     // ─── User Defined Variables ───────────────────────────────────────────────
 
-    private void buildUDVs(Xml x, ParsedUrl pu, AuthProfile auth, Environment env) {
-        boolean userBaseUrl = false;
+    private void buildUDVs(Xml x, ParsedUrl pu, AuthProfile auth, Environment env, TestSuite suite) {
+        // Env variables first, session globals overwrite (engine precedence),
+        // one UDV entry per name. Bare names — {{x}} in requests becomes ${x}.
+        Map<String, String> merged = new LinkedHashMap<>();
         if (env != null && env.getVariables() != null) {
             for (Param v : env.getVariables()) {
-                if (v.getKey() == null || v.getKey().isBlank()) continue;
-                udv(x, v.getKey().trim(), vars(v.getValue() != null ? v.getValue() : ""));
-                if ("baseUrl".equals(v.getKey().trim())) userBaseUrl = true;
+                String k = TestSuite.bareVarName(v.getKey());
+                if (k != null && !k.isBlank()) merged.put(k, v.getValue() != null ? v.getValue() : "");
             }
         }
-        if (!userBaseUrl) udv(x, "baseUrl", pu.baseUrl);
+        if (suite != null && suite.getGlobalVariables() != null) {
+            for (GlobalVariable v : suite.getGlobalVariables()) {
+                String k = TestSuite.bareVarName(v.getName());
+                if (k != null && !k.isBlank()) merged.put(k, v.getValue() != null ? v.getValue() : "");
+            }
+        }
+        for (Map.Entry<String, String> e : merged.entrySet()) {
+            udv(x, e.getKey(), vars(e.getValue()));
+        }
+        if (!merged.containsKey("baseUrl")) udv(x, "baseUrl", pu.baseUrl);
         if (auth == null || auth.getType() == null || auth.getType() == AuthType.NONE) return;
         switch (auth.getType()) {
             case BEARER ->

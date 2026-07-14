@@ -146,8 +146,8 @@ public class ExcelImportService {
         for (int r = 1; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            String name = cell(row, 0);
-            if (name.isEmpty()) continue;
+            String name = TestSuite.bareVarName(cell(row, 0));
+            if (name == null || name.isEmpty()) continue;
             list.add(new GlobalVariable(name, cell(row, 1), cell(row, 2)));
         }
         return list;

@@ -218,6 +218,15 @@ function onAuthTypeChange() {
 
 // ─── Global Variables panel ────────────────────────────────────────────────────
 
+// "{{abc}}", "${abc}" hay " abc " đều là tên "abc" — braces chỉ là cú pháp sử dụng
+function normVarName(n) {
+  if (!n) return '';
+  n = n.trim();
+  if (n.startsWith('{{') && n.endsWith('}}')) n = n.slice(2, -2);
+  else if (n.startsWith('${') && n.endsWith('}')) n = n.slice(2, -1);
+  return n.trim();
+}
+
 async function loadVariables() {
   try {
     const res = await api('GET', '/variables');
@@ -237,7 +246,7 @@ function renderVariablesTable() {
   }
   tbody.innerHTML = vars.map(v => `
     <tr>
-      <td style="font-family:Consolas,monospace;font-size:12px">{{${esc(v.name)}}}</td>
+      <td style="font-family:Consolas,monospace;font-size:12px">${esc(v.name)}</td>
       <td><input class="gv-value" data-name="${esc(v.name)}" value="${esc(v.value || '')}"
                  style="width:100%;font-family:Consolas,monospace;font-size:12px"
                  onchange="saveVariable(this.dataset.name, this.value)"/></td>
@@ -248,6 +257,8 @@ function renderVariablesTable() {
 }
 
 async function saveVariable(name, value) {
+  name = normVarName(name);
+  if (!name) return;
   try {
     const res = await api('PUT', '/variables', { name, value });
     if (!res.success) { toast(res.message, true); return; }
@@ -258,9 +269,9 @@ async function saveVariable(name, value) {
 }
 
 function addVariableRow() {
-  const name = prompt('Variable name (dùng dạng {{name}} trong request):');
-  if (!name || !name.trim()) return;
-  saveVariable(name.trim(), '');
+  const name = normVarName(prompt('Variable name (vd: userId — trong request dùng {{userId}}):') || '');
+  if (!name) return;
+  saveVariable(name, '');
 }
 
 async function deleteVariable(name) {

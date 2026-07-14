@@ -390,6 +390,12 @@ Rules:
 Every successful `extractVariables` also writes the value into a suite-level
 store: `globalVariables` (name/value/updatedAt). Postman-style rules:
 
+- **Names are BARE** (`gvid`, not `{{gvid}}`) — `{{ }}` / `${ }` are usage
+  syntax only; wrappers typed anywhere (UI, Excel, JSON) are auto-stripped.
+- **Exports carry the store**: Postman → collection variables; JMeter → User
+  Defined Variables (globals overwrite env vars on name collision, matching
+  engine precedence); Bruno/OpenAPI → resolved into URLs at export time.
+
 - **Precedence when resolving `{{name}}`**: current flow's extracted variables
   → global store → environment variables. A full run is never polluted by
   stale values; the store only fills gaps.

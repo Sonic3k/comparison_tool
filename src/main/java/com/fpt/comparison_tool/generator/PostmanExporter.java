@@ -61,6 +61,7 @@ public class PostmanExporter {
 
         ArrayNode vars = buildSingleModeVariables(env, auth);
         overrideAuthVars(suite).forEach(vars::add);
+        globalVarNodes(suite).forEach(vars::add);
         return buildCollection(suite, dominantAuthType(auth), isOauth2(auth), vars,
                                env != null ? env.getHeaders() : null, profileMap(suite));
     }
@@ -82,6 +83,7 @@ public class PostmanExporter {
 
         ArrayNode bothVars = buildBothModeBaseVariable();
         overrideAuthVars(suite).forEach(bothVars::add);
+        globalVarNodes(suite).forEach(bothVars::add);
         byte[] collection = buildCollection(suite, dominantAuthType(sourceAuth), needsOauth2,
                                             bothVars,
                                             unionEnvHeaders(sourceEnv, targetEnv), profileMap(suite));
@@ -547,6 +549,18 @@ public class PostmanExporter {
                     }
                     default -> { }
                 }
+            }
+        }
+        return out;
+    }
+
+    /** Session globals as collection variables — bare names, work in single and both mode. */
+    private List<ObjectNode> globalVarNodes(TestSuite suite) {
+        List<ObjectNode> out = new ArrayList<>();
+        if (suite.getGlobalVariables() != null) {
+            for (GlobalVariable v : suite.getGlobalVariables()) {
+                String k = TestSuite.bareVarName(v.getName());
+                if (k != null && !k.isBlank()) out.add(collectionVar(k, v.getValue() != null ? v.getValue() : ""));
             }
         }
         return out;

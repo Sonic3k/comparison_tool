@@ -789,8 +789,9 @@ public class ExecutionService {
         Map<String, String> vars = new LinkedHashMap<>();
         if (env != null && env.getVariables() != null) {
             for (Param p : env.getVariables()) {
-                if (p.getKey() != null && !p.getKey().isBlank()) {
-                    vars.put(p.getKey().trim(), p.getValue() != null ? p.getValue() : "");
+                String k = TestSuite.bareVarName(p.getKey());
+                if (k != null && !k.isBlank()) {
+                    vars.put(k, p.getValue() != null ? p.getValue() : "");
                 }
             }
         }
