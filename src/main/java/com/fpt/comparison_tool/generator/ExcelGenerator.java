@@ -21,6 +21,7 @@ public class ExcelGenerator {
             writeSettingsSheet(wb, suite.getSettings(), s);
             writeEnvironmentsSheet(wb, suite.getEnvironments(), s);
             writeAuthProfilesSheet(wb, suite, s);
+            writeVariablesSheet(wb, suite, s);
             for (TestGroup group : suite.getTestGroups()) {
                 writeTestGroupSheet(wb, group, s);
             }
@@ -29,6 +30,25 @@ public class ExcelGenerator {
     }
 
     // ─── Settings ─────────────────────────────────────────────────────────────
+
+    /** Session-global variables — 3 columns, absent in old workbooks. */
+    private void writeVariablesSheet(Workbook wb, TestSuite suite, Styles s) {
+        Sheet sheet = wb.createSheet("Variables");
+        Row header = sheet.createRow(0);
+        setCellStyled(header, 0, "Name",       s.header);
+        setCellStyled(header, 1, "Value",      s.header);
+        setCellStyled(header, 2, "Updated At", s.header);
+        int r = 1;
+        for (GlobalVariable v : suite.getGlobalVariables()) {
+            Row row = sheet.createRow(r++);
+            row.createCell(0).setCellValue(v.getName()      != null ? v.getName()      : "");
+            row.createCell(1).setCellValue(v.getValue()     != null ? v.getValue()     : "");
+            row.createCell(2).setCellValue(v.getUpdatedAt() != null ? v.getUpdatedAt() : "");
+        }
+        sheet.setColumnWidth(0, 24 * 256);
+        sheet.setColumnWidth(1, 50 * 256);
+        sheet.setColumnWidth(2, 20 * 256);
+    }
 
     private void writeSettingsSheet(Workbook wb, SuiteSettings st, Styles s) {
         Sheet sheet = wb.createSheet("Settings");

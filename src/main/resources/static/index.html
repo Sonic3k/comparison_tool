@@ -62,6 +62,7 @@
       <div class="nav-item" id="nav-settings"     onclick="showPanel('settings')"    ><span class="icon">⚙️</span> Settings</div>
       <div class="nav-item" id="nav-environment"  onclick="showPanel('environment')" ><span class="icon">🌐</span> Environments</div>
       <div class="nav-item" id="nav-authProfiles" onclick="showPanel('authProfiles')"><span class="icon">🔑</span> Auth Profiles</div>
+      <div class="nav-item" id="nav-variables"    onclick="showPanel('variables'); loadVariables()"><span class="icon">🧩</span> Variables</div>
       <div class="nav-item" id="nav-groups"       onclick="showPanel('groups')"      ><span class="icon">📋</span> Test Cases</div>
       <div class="nav-item" id="nav-results"      onclick="showPanel('results')"     ><span class="icon">📊</span> Results</div>
     </div>
@@ -169,6 +170,27 @@
         <table>
           <thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Token URL</th><th></th></tr></thead>
           <tbody id="authProfilesTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Global Variables -->
+    <div class="panel" id="panel-variables">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Global Variables</div>
+          <div class="section-sub">Tự ghi khi extractVariables chạy thành công (last write wins) · dùng cho ▶ Re-run / Run TC / ⌘ cURL khi không có flow · sửa tay được · export kèm suite (JSON/XML/Excel)</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-primary btn-sm" onclick="addVariableRow()">+ Add Variable</button>
+          <button class="btn btn-outline btn-sm" onclick="loadVariables()">↻ Refresh</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="clearVariables()">✕ Clear All</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:220px">Name</th><th>Value</th><th style="width:170px">Updated At</th><th style="width:44px"></th></tr></thead>
+          <tbody id="variablesTable"></tbody>
         </table>
       </div>
     </div>

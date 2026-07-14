@@ -23,15 +23,21 @@ public class TestSuite {
     @JsonProperty("authProfiles")
     private List<AuthProfile> authProfiles;
 
+    @JacksonXmlElementWrapper(localName = "globalVariables")
+    @JacksonXmlProperty(localName = "variable")
+    @JsonProperty("globalVariables")
+    private List<GlobalVariable> globalVariables;
+
     @JacksonXmlElementWrapper(localName = "testGroups")
     @JacksonXmlProperty(localName = "testGroup")
     @JsonProperty("testGroups")
     private List<TestGroup> testGroups;
 
     public TestSuite() {
-        this.environments = new ArrayList<>();
-        this.authProfiles = new ArrayList<>();
-        this.testGroups   = new ArrayList<>();
+        this.environments    = new ArrayList<>();
+        this.authProfiles    = new ArrayList<>();
+        this.testGroups      = new ArrayList<>();
+        this.globalVariables = new ArrayList<>();
     }
 
     public TestSuite(SuiteSettings settings, List<Environment> environments,
@@ -40,6 +46,22 @@ public class TestSuite {
         this.environments = environments != null ? environments : new ArrayList<>();
         this.authProfiles = authProfiles != null ? authProfiles : new ArrayList<>();
         this.testGroups   = testGroups   != null ? testGroups   : new ArrayList<>();
+        this.globalVariables = new ArrayList<>();
+    }
+
+    public List<GlobalVariable> getGlobalVariables() {
+        if (globalVariables == null) globalVariables = new ArrayList<>();
+        return globalVariables;
+    }
+    public void setGlobalVariables(List<GlobalVariable> v) { this.globalVariables = v; }
+
+    /** Upsert by name — parallel flows write concurrently; last write wins. */
+    public synchronized void putGlobalVariable(String name, String value, String updatedAt) {
+        if (name == null || name.isBlank()) return;
+        for (GlobalVariable v : getGlobalVariables()) {
+            if (name.equals(v.getName())) { v.setValue(value); v.setUpdatedAt(updatedAt); return; }
+        }
+        getGlobalVariables().add(new GlobalVariable(name, value, updatedAt));
     }
 
     public void addTestGroup(TestGroup group)   { this.testGroups.add(group); }

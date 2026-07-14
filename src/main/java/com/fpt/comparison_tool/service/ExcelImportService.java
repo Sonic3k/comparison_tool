@@ -59,6 +59,7 @@ public class ExcelImportService {
             suite.setSettings(parseSettings(wb));
             suite.setEnvironments(parseEnvironments(wb));
             suite.setAuthProfiles(parseAuthProfiles(wb.getSheet("Auth Profiles")));
+            suite.setGlobalVariables(parseGlobalVariables(wb.getSheet("Variables")));
 
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                 Sheet sheet = wb.getSheetAt(i);
@@ -134,6 +135,20 @@ public class ExcelImportService {
             Environment env = new Environment(name, cell(row, 1), cell(row, 2), parseHeadersEncoded(cell(row, 3)));
             env.setVariables(parseVarsEncoded(cell(row, 4)));
             list.add(env);
+        }
+        return list;
+    }
+
+    /** "Variables" sheet: Name | Value | Updated At. Old workbooks lack it. */
+    private List<GlobalVariable> parseGlobalVariables(Sheet sheet) {
+        List<GlobalVariable> list = new ArrayList<>();
+        if (sheet == null) return list;
+        for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            String name = cell(row, 0);
+            if (name.isEmpty()) continue;
+            list.add(new GlobalVariable(name, cell(row, 1), cell(row, 2)));
         }
         return list;
     }

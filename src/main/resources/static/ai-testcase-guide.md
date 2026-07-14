@@ -385,6 +385,24 @@ Rules:
 
 ---
 
+## Global Variables (session store)
+
+Every successful `extractVariables` also writes the value into a suite-level
+store: `globalVariables` (name/value/updatedAt). Postman-style rules:
+
+- **Precedence when resolving `{{name}}`**: current flow's extracted variables
+  → global store → environment variables. A full run is never polluted by
+  stale values; the store only fills gaps.
+- **Single-request Re-run / Run TC / cURL** resolve from the store — so a
+  request like `PUT /change-status {"ids": [{{rZRL037}}]}` can be re-run alone
+  after one full run captured the id.
+- Same-named variables across parallel flows: last write wins.
+- Editable in the UI (Variables panel), and exported/imported with the suite:
+  JSON/XML `globalVariables`, Excel sheet **Variables** (Name | Value |
+  Updated At; old workbooks without the sheet import unchanged).
+
+---
+
 ## Variable Extraction DSL
 
 `extractVariables` extracts values from the response body and stores them as variables for subsequent TCs.

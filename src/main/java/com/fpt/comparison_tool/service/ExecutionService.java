@@ -354,7 +354,8 @@ public class ExecutionService {
         Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
         Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
 
-        // Single-case re-run has no extracted variables — placeholders stay literal
+        // No flow variables on a single re-run — session globals (populated by
+        // earlier runs, editable in the Variables panel) fill the placeholders
         Map<String, String> variables = new ConcurrentHashMap<>();
 
         // Use a throwaway progress so executeAndRecord doesn't touch the real one
@@ -376,8 +377,11 @@ public class ExecutionService {
 
         progress.recordStart(group.getName(), tc);
 
-        // Resolve {{variables}} in TC fields before execution
+        // Resolve {{variables}} in TC fields before execution.
+        // Precedence: flow variables (this run's extracts) > session globals;
+        // environment variables are applied last, per side, in callEndpoint.
         TestRequest resolved = resolveVariables(tc, variables);
+        resolved = resolveVariables(resolved, globalVarMap(suite));
 
         try {
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
@@ -395,7 +399,7 @@ public class ExecutionService {
 
             // Extract variables from response if configured
             if (responseBody != null && tc.getExtractVariables() != null && !tc.getExtractVariables().isBlank()) {
-                extractVariables(responseBody, tc.getExtractVariables(), variables);
+                extractVariables(responseBody, tc.getExtractVariables(), variables, suite);
             }
 
         } catch (Exception e) {
@@ -653,7 +657,19 @@ public class ExecutionService {
         while (m.find()) out.add("{{" + m.group(1) + "}}");
     }
 
-    private void extractVariables(String responseBody, String extractDsl, Map<String, String> variables) {
+    private Map<String, String> globalVarMap(TestSuite suite) {
+        Map<String, String> m = new LinkedHashMap<>();
+        if (suite != null && suite.getGlobalVariables() != null) {
+            for (GlobalVariable v : suite.getGlobalVariables()) {
+                if (v.getName() != null && !v.getName().isBlank()) {
+                    m.put(v.getName().trim(), v.getValue() != null ? v.getValue() : "");
+                }
+            }
+        }
+        return m;
+    }
+
+    private void extractVariables(String responseBody, String extractDsl, Map<String, String> variables, TestSuite suite) {
         if (responseBody == null || responseBody.isBlank()) return;
         try {
             JsonNode root = objectMapper.readTree(responseBody);
@@ -667,6 +683,9 @@ public class ExecutionService {
                 String value = resolveJsonPath(root, jsonPath);
                 if (value != null) {
                     variables.put(varName, value);
+                    // Write-through to the session-global store (visible in the
+                    // Variables panel; makes single-request re-runs resolvable)
+                    suite.putGlobalVariable(varName, value, LocalDateTime.now().format(TIMESTAMP_FMT));
                 }
             }
         } catch (Exception e) {

@@ -214,3 +214,70 @@ function onAuthTypeChange() {
   vis('ap-scope-wrap', t === 'client_credentials');
   vis('ap-token-wrap', t === 'bearer');
 }
+
+
+// ─── Global Variables panel ────────────────────────────────────────────────────
+
+async function loadVariables() {
+  try {
+    const res = await api('GET', '/variables');
+    if (!res.success) { toast(res.message, true); return; }
+    suite.globalVariables = res.data || [];
+    renderVariablesTable();
+  } catch (e) { toast('Load variables failed: ' + e.message, true); }
+}
+
+function renderVariablesTable() {
+  const tbody = document.getElementById('variablesTable');
+  if (!tbody) return;
+  const vars = (suite && suite.globalVariables) || [];
+  if (!vars.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:#9ca3af;padding:16px">No variables yet — run a suite with extractVariables, or add one manually.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = vars.map(v => `
+    <tr>
+      <td style="font-family:Consolas,monospace;font-size:12px">{{${esc(v.name)}}}</td>
+      <td><input class="gv-value" data-name="${esc(v.name)}" value="${esc(v.value || '')}"
+                 style="width:100%;font-family:Consolas,monospace;font-size:12px"
+                 onchange="saveVariable(this.dataset.name, this.value)"/></td>
+      <td style="font-size:12px;color:#6b7280">${esc(v.updatedAt || '')}</td>
+      <td><button class="btn btn-outline btn-xs" style="color:var(--red)"
+                  onclick="deleteVariable('${esc(v.name)}')">✕</button></td>
+    </tr>`).join('');
+}
+
+async function saveVariable(name, value) {
+  try {
+    const res = await api('PUT', '/variables', { name, value });
+    if (!res.success) { toast(res.message, true); return; }
+    suite.globalVariables = res.data;
+    renderVariablesTable();
+    toast('Saved {{' + name + '}}');
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+function addVariableRow() {
+  const name = prompt('Variable name (dùng dạng {{name}} trong request):');
+  if (!name || !name.trim()) return;
+  saveVariable(name.trim(), '');
+}
+
+async function deleteVariable(name) {
+  try {
+    const res = await api('DELETE', '/variables/' + encodeURIComponent(name));
+    if (!res.success) { toast(res.message, true); return; }
+    suite.globalVariables = res.data;
+    renderVariablesTable();
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+}
+
+async function clearVariables() {
+  if (!confirm('Xóa toàn bộ global variables?')) return;
+  try {
+    const res = await api('DELETE', '/variables');
+    if (!res.success) { toast(res.message, true); return; }
+    suite.globalVariables = res.data;
+    renderVariablesTable();
+  } catch (e) { toast('Clear failed: ' + e.message, true); }
+}

@@ -931,7 +931,9 @@ function renderCaseDrawer() {
     if (hasCmp) {
       const diffs = (res.comparisonResult || '').split('\n').filter(Boolean).filter(d => d !== errMsg);
       html += `<div class="expand-label" style="color:#0369a1;margin-top:10px">⇄ Comparison Result</div>`;
-      html += diffs.length
+      html += st === 'error' && !diffs.length
+        ? `<div style="color:#9ca3af;font-size:12px;margin-bottom:10px">— Not evaluated: the request failed before comparison ran</div>`
+        : diffs.length
         ? `<ul class="diff-list">${diffs.map(d => `<li class="diff-item">${esc(d)}</li>`).join('')}</ul>`
         : `<div style="color:#059669;font-size:12px;margin-bottom:10px">✓ No differences</div>`;
       html += `<div class="drawer-2col" style="margin-bottom:14px">
@@ -947,8 +949,10 @@ function renderCaseDrawer() {
     }
     if (hasAuto) {
       const lines = (res.assertionResult || '').split('\n').filter(Boolean);
-      html += `<div class="expand-label" style="color:#7c3aed;margin-top:4px">✓ Assertion Result · tgt ${esc(res.targetStatus || '—')}</div>`;
-      html += lines.length
+      html += `<div class="expand-label" style="color:#7c3aed;margin-top:4px">Assertion Result · tgt ${esc(res.targetStatus || '—')}</div>`;
+      html += st === 'error' && !lines.length
+        ? `<div style="color:#9ca3af;font-size:12px;margin-bottom:12px">— Not evaluated: the request failed before assertions ran</div>`
+        : lines.length
         ? `<div style="font-size:12px;font-family:Consolas,monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre-wrap">${lines.map(l => `<span style="color:${l.startsWith('✗') ? '#dc2626' : '#059669'}">${esc(l)}</span>`).join('\n')}</div>`
         : `<div style="color:#059669;font-size:12px;margin-bottom:12px">✓ All assertions passed</div>`;
       if (!hasCmp && res.targetResponse) {

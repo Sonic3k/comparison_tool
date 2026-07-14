@@ -26,6 +26,11 @@ public class CurlBuilder {
     }
 
     public String build(Environment env, TestRequest tc, AuthProfile auth) {
+        return build(env, tc, auth, java.util.Map.of());
+    }
+
+    /** extraVars: session-global variables — they win over env vars on collision. */
+    public String build(Environment env, TestRequest tc, AuthProfile auth, java.util.Map<String, String> extraVars) {
         if (env == null) return "# Environment not configured";
 
         java.util.Map<String, String> vars = new java.util.LinkedHashMap<>();
@@ -35,6 +40,7 @@ public class CurlBuilder {
             }
         }
         if (env.getUrl() != null && !vars.containsKey("baseUrl")) vars.put("baseUrl", env.getUrl());
+        if (extraVars != null) vars.putAll(extraVars);   // globals beat env vars
 
         HttpHeaders headers = new HttpHeaders();
 

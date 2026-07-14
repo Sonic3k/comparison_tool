@@ -143,9 +143,13 @@ public class ExecutionController {
         AuthProfile sourceAuth = findProfile(suite, override != null ? override : (sourceEnv != null ? sourceEnv.getAuthProfile() : null));
         AuthProfile targetAuth = findProfile(suite, override != null ? override : (targetEnv != null ? targetEnv.getAuthProfile() : null));
 
+        Map<String, String> globals = new HashMap<>();
+        for (var v : session.getTestSuite().getGlobalVariables()) {
+            if (v.getName() != null) globals.put(v.getName(), v.getValue() != null ? v.getValue() : "");
+        }
         Map<String, String> result = new HashMap<>();
-        result.put("source", curlBuilder.build(sourceEnv, tc, sourceAuth));
-        result.put("target", curlBuilder.build(targetEnv, tc, targetAuth));
+        result.put("source", curlBuilder.build(sourceEnv, tc, sourceAuth, globals));
+        result.put("target", curlBuilder.build(targetEnv, tc, targetAuth, globals));
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
