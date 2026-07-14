@@ -303,7 +303,7 @@ function caseRowHtml(grp, tc, groupKey) {
               title="${disabled ? 'Enable' : 'Disable'}">
               ${disabled ? '○' : '●'}
             </button>
-            <button class="btn btn-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this request only (no setup, no variables)">↻</button>
+            <button class="btn btn-teal-outline btn-xs" onclick="rerunCase('${esc(grp.name)}','${esc(tc.id)}', this)" title="Re-run this request only (no setup, no variables)">▶</button>
             <button class="btn btn-outline btn-xs" onclick="showCurl('${esc(grp.name)}','${esc(tc.id)}')" title="Show cURL for manual debug">⌘</button>
             <button class="btn btn-outline btn-xs" onclick="editCase('${esc(grp.name)}','${esc(tc.id)}')" title="Edit">✎</button>
             <button class="btn btn-outline btn-xs" style="color:var(--red);margin-left:3px" onclick="deleteCase('${esc(grp.name)}','${esc(tc.id)}')" title="Delete">✕</button>
@@ -902,6 +902,10 @@ function renderCaseDrawer() {
   if (tc.name) sub.push(esc(tc.name));
   document.getElementById('drawerSub').innerHTML = sub.join(' · ');
 
+  const descEl = document.getElementById('drawerDesc');
+  descEl.textContent = tc.description || '';
+  descEl.style.display = tc.description ? '' : 'none';
+
   const mode    = res.modeRun || tc.verificationMode || 'comparison';
   const hasCmp  = mode === 'comparison' || mode === 'both';
   const hasAuto = mode === 'automation' || mode === 'both';
@@ -922,7 +926,7 @@ function renderCaseDrawer() {
   }
 
   if (!res.executedAt && !res.sourceStatus && !res.targetStatus && !errMsg) {
-    html += `<div style="color:#9ca3af;font-size:13px;padding:16px 0">Not executed yet — run the group or hit ↻ Re-run.</div>`;
+    html += `<div style="color:#9ca3af;font-size:13px;padding:16px 0">Not executed yet — run the group or hit ▶ Re-run.</div>`;
   } else {
     if (hasCmp) {
       const diffs = (res.comparisonResult || '').split('\n').filter(Boolean).filter(d => d !== errMsg);
@@ -980,6 +984,6 @@ async function drawerRerun() {
   const btn = document.getElementById('drawerRerunBtn');
   await rerunCase(drawerCase.group, drawerCase.id, btn);
   btn.disabled = false;
-  btn.textContent = '↻ Re-run';
+  btn.textContent = '▶ Re-run';
   renderCaseDrawer();
 }
