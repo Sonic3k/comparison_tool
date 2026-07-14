@@ -46,20 +46,19 @@ function renderGroupGrid(groups) {
       return `<div class="group-card${disabled ? ' group-card-disabled' : ''}" onclick="openGroupDetail('${esc(grp.name)}')">
         <div class="group-card-header">
           <div>
-            <div class="group-card-name">${esc(grp.name)}${disabled ? ' <span style="font-size:11px;color:#9ca3af;font-weight:400">(disabled)</span>' : ''}</div>
+            <div class="group-card-name" title="${esc(grp.name)}">${esc(grp.name)}${disabled ? ' <span style="font-size:11px;color:#9ca3af;font-weight:400">(disabled)</span>' : ''}</div>
             <div class="group-card-owner">${st.reqs} requests${grp.owner ? ' · ' + esc(grp.owner) : ''}</div>
           </div>
           <div onclick="event.stopPropagation()" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-teal btn-xs" onclick="runGroup('${esc(grp.name)}')">▶</button>
             <button class="btn btn-outline btn-xs" onclick="exportGroupXml('${esc(grp.name)}')" title="Export XML">⬇</button>
-            <button class="btn btn-xs ${disabled ? 'toggle-off' : 'toggle-on'}"
-              onclick="toggleGroup('${esc(grp.name)}')" title="${disabled ? 'Enable group' : 'Disable group'}">
-              ${disabled ? '○' : '●'}
-            </button>
+            <button class="switch${disabled ? '' : ' on'}"
+              onclick="toggleGroup('${esc(grp.name)}')"
+              title="${disabled ? 'Disabled — click to enable' : 'Enabled — click to disable'}"></button>
             <button class="btn btn-outline btn-xs" style="color:var(--red)" onclick="deleteGroupByName('${esc(grp.name)}',event)">✕</button>
           </div>
         </div>
-        ${grp.description ? `<div class="group-card-desc">${esc(grp.description)}</div>` : ''}
+        ${grp.description ? `<div class="group-card-desc" title="${esc(grp.description)}">${esc(grp.description)}</div>` : ''}
         <div class="group-card-stats">
           <div class="mini-stat blue"><div class="n">${st.total}</div><div class="l">Test cases</div></div>
           <div class="mini-stat green"><div class="n">${st.passed}</div><div class="l">Passed</div></div>
@@ -186,7 +185,7 @@ function updateGroupDetailHeader(grp) {
   const btn = document.getElementById('btnToggleGroup');
   if (btn) {
     const disabled = grp.enabled === false;
-    btn.textContent = disabled ? '○ Enable Group' : '● Disable Group';
+    btn.textContent = disabled ? 'Enable Group' : 'Disable Group';
     btn.className   = 'btn btn-sm ' + (disabled ? 'toggle-off' : 'toggle-on');
   }
 }
