@@ -32,6 +32,11 @@ import java.util.regex.Pattern;
  *   $.orders[*].order_status any == "confirmed"
  *     → PASS if AT LEAST ONE element has order_status == "confirmed"
  *
+ * ── Terminal [*] on arrays of scalars ──────────────────────────────────
+ *   $.to[*] any == "a@x.com"       — each element itself is under test
+ *   $.n[*]  all >= 1
+ *   Quantifier (any|all) is MANDATORY for this form — no silent default.
+ *
  * ── Array filter [key=value] ───────────────────────────────────────────
  *   $.orders[order_id="ORD-10001"].order_status == "confirmed"
  *     → find element where order_id == "ORD-10001", assert its order_status
@@ -46,6 +51,10 @@ public class AssertionService {
 
     private static final Pattern FILTER_PATTERN =
             Pattern.compile("^(.+?)\\[([\\w_]+)=[\"']?([^\"'\\]]+)[\"']?](.*)$");
+
+    /** Terminal [*]: path[*] followed by the rest ("any == x" | "" | garbage). */
+    private static final Pattern TERMINAL_WILDCARD =
+            Pattern.compile("^(.+)\\[\\*\\]\\s*(.*)$");
 
     public record AssertionLine(String raw, boolean passed, String reason) {}
 
@@ -102,12 +111,20 @@ public class AssertionService {
                 return evaluateFilterAssertion(line, filterMatcher, root);
             }
 
-            // 2. Array wildcard: path[*].field op rhs
+            // 2. Array wildcard with field: path[*].field op rhs
             if (expr.contains("[*].")) {
                 return evaluateWildcardAssertion(line, expr, root);
             }
 
-            // 3. Scalar
+            // 3. Terminal wildcard on arrays of scalars: path[*] any|all op rhs.
+            //    Quantifier is MANDATORY here — the [*].field defaulting rules
+            //    have caused enough confusion already.
+            Matcher termWild = TERMINAL_WILDCARD.matcher(expr);
+            if (termWild.matches()) {
+                return evaluateTerminalWildcard(line, termWild, root);
+            }
+
+            // 4. Scalar
             return evaluateScalar(line, expr, root);
 
         } catch (Exception e) {
@@ -218,6 +235,53 @@ public class AssertionService {
         for (JsonNode el : array) {
             JsonNode node = resolvePath(el, fieldPath);
             AssertionLine r = checkAssertion(raw, node, op, rhs);
+            if (r.passed()) passCount++;
+            else if (firstFailReason == null) firstFailReason = r.reason();
+        }
+
+        boolean pass = quantifier.equals("all") ? passCount == total : passCount > 0;
+        if (pass) return new AssertionLine(raw, true, null);
+
+        String hint = quantifier.equals("all")
+                ? passCount + "/" + total + " elements passed — " + firstFailReason
+                : "0/" + total + " elements matched — " + firstFailReason;
+        return new AssertionLine(raw, false, hint);
+    }
+
+    // ── Terminal wildcard ─────────────────────────────────────────────────────
+    // $.to[*] any == "a@x.com"        — each element itself is under test
+    // $.n[*] all >= 1
+    // Quantifier (any|all) is mandatory; ops reuse checkAssertion().
+
+    private AssertionLine evaluateTerminalWildcard(String raw, Matcher m, JsonNode root) {
+        String arrayPath = m.group(1);
+        String rest      = m.group(2) == null ? "" : m.group(2).trim();
+
+        String[] tokens = rest.isEmpty() ? new String[0] : rest.split("\\s+", -1);
+        if (tokens.length == 0
+                || !(tokens[0].equalsIgnoreCase("any") || tokens[0].equalsIgnoreCase("all"))) {
+            return new AssertionLine(raw, false,
+                    "terminal [*] requires explicit quantifier: use 'any' or 'all' (e.g. $.to[*] any == \"x\")");
+        }
+        String quantifier = tokens[0].toLowerCase();
+        ParsedOp parsed = parseOp(tokens, 1);
+
+        if (root == null) return new AssertionLine(raw, false, "response is not valid JSON");
+
+        JsonNode array = resolvePath(root, arrayPath);
+        if (array == null || !array.isArray()) {
+            return new AssertionLine(raw, false,
+                    "'" + arrayPath + "' is not an array or does not exist");
+        }
+        if (array.size() == 0) {
+            return new AssertionLine(raw, false, "'" + arrayPath + "' is empty");
+        }
+
+        int passCount = 0, total = array.size();
+        String firstFailReason = null;
+
+        for (JsonNode el : array) {
+            AssertionLine r = checkAssertion(raw, el, parsed.op, parsed.rhs);
             if (r.passed()) passCount++;
             else if (firstFailReason == null) firstFailReason = r.reason();
         }

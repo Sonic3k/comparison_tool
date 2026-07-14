@@ -426,7 +426,9 @@ One assertion per line. All assertions must pass for the TC to pass.
 | `$.field < value` | Numeric less than | `$.price < 1000` |
 | `$.field >= value` | Numeric greater than or equal | `$.count >= 1` |
 | `$.field contains value` | String contains substring | `$.message contains "success"` |
-| `$.array[*] contains value` | Any element in array contains value | `$.tags[*] contains "electronics"` |
+| `$.array[*] any <op> x` | Array of SCALARS: at least one element satisfies. Quantifier `any`/`all` is **REQUIRED** for this form | `$.to[*] any == "a@x.com"` |
+| `$.array[*] all <op> x` | Array of scalars: every element satisfies | `$.n[*] all >= 1` |
+| `$.array[*].field <op> x` | Array of OBJECTS: assert a field of each element. Optional `any`/`all` before op (`contains` defaults to any, others to all) | `$.orders[*].currency all == "USD"` |
 | `$.array[key=val].field == x` | Filter array by key, assert field | `$.items[status=active].count == 5` |
 
 ### Examples
@@ -436,7 +438,8 @@ $.status == 200
 $.data.user_id exists
 $.data.email == "john@example.com"
 $.pagination.total > 0
-$.items[*] contains "laptop"
+$.tags[*] any contains "laptop"
+$.to[*] all != "blocked@x.com"
 $.error == "NOT_FOUND"
 $.code == "INVALID_CREDENTIALS"
 ```
