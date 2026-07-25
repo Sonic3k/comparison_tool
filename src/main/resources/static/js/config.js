@@ -218,7 +218,7 @@ function onAuthTypeChange() {
 
 // ─── Global Variables panel ────────────────────────────────────────────────────
 
-// "{{abc}}", "${abc}" hay " abc " đều là tên "abc" — braces chỉ là cú pháp sử dụng
+// "{{abc}}", "${abc}" and " abc " all mean the name "abc" — braces are just usage syntax
 function normVarName(n) {
   if (!n) return '';
   n = n.trim();
@@ -269,7 +269,7 @@ async function saveVariable(name, value) {
 }
 
 function addVariableRow() {
-  const name = normVarName(prompt('Variable name (vd: userId — trong request dùng {{userId}}):') || '');
+  const name = normVarName(prompt('Variable name (e.g. userId — referenced in requests as {{userId}}):') || '');
   if (!name) return;
   saveVariable(name, '');
 }
@@ -284,7 +284,7 @@ async function deleteVariable(name) {
 }
 
 async function clearVariables() {
-  if (!confirm('Xóa toàn bộ global variables?')) return;
+  if (!confirm('Clear all global variables?')) return;
   try {
     const res = await api('DELETE', '/variables');
     if (!res.success) { toast(res.message, true); return; }
