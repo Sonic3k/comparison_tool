@@ -947,13 +947,56 @@ function renderCaseDrawer() {
       </div>`;
     }
     if (hasAuto) {
+      const auto  = tc.automationConfig || {};
       const lines = (res.assertionResult || '').split('\n').filter(Boolean);
-      html += `<div class="expand-label" style="color:#7c3aed;margin-top:4px">Assertion Result · tgt ${esc(res.targetStatus || '—')}</div>`;
-      html += st === 'error' && !lines.length
-        ? `<div style="color:#9ca3af;font-size:12px;margin-bottom:12px">— Not evaluated: the request failed before assertions ran</div>`
-        : lines.length
-        ? `<div style="font-size:12px;font-family:Consolas,monospace;background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre-wrap">${lines.map(l => `<span style="color:${l.startsWith('✗') ? '#dc2626' : '#059669'}">${esc(l)}</span>`).join('\n')}</div>`
-        : `<div style="color:#059669;font-size:12px;margin-bottom:12px">✓ All assertions passed</div>`;
+
+      // The assertions as written on the Test Request — same order the engine evaluates them.
+      const written = [];
+      if (auto.expectedStatus) written.push('status == ' + auto.expectedStatus);
+      (auto.expectedBody || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(l => written.push(l));
+
+      // Failing lines come back as "✗ <raw> → <reason>" — map them onto the written lines.
+      const fails = {};
+      lines.forEach(l => {
+        if (!l.startsWith('✗')) return;
+        const body = l.slice(1).trim();
+        const i = body.indexOf('→');
+        if (i >= 0) fails[body.slice(0, i).trim()] = body.slice(i + 1).trim();
+        else fails[body] = '';
+      });
+      const executed = !!res.executedAt && lines.length > 0;
+      const summary  = lines.length ? lines[0] : '';
+
+      html += `<div class="expand-label" style="color:#7c3aed;margin-top:4px">Assertions · tgt ${esc(res.targetStatus || '—')}${summary ? ' · ' + esc(summary) : ''}</div>`;
+
+      if (written.length) {
+        html += `<div class="assert-box">` + written.map(w => {
+          const failed = Object.prototype.hasOwnProperty.call(fails, w);
+          const icon   = !executed ? '·' : failed ? '✗' : '✓';
+          const color  = !executed ? '#9ca3af' : failed ? '#dc2626' : '#059669';
+          const reason = failed && fails[w] ? `<span style="color:#b45309"> → ${esc(fails[w])}</span>` : '';
+          return `<div class="assert-line"><span style="color:${color};width:14px;display:inline-block">${icon}</span>`
+               + `<span style="color:${!executed ? '#6b7280' : failed ? '#dc2626' : '#374151'}">${esc(w)}</span>${reason}</div>`;
+        }).join('') + `</div>`;
+        // Anything the engine reported that isn't a line we wrote (e.g. imported suite, edited DSL)
+        const extra = Object.keys(fails).filter(k => written.indexOf(k) < 0);
+        if (extra.length) {
+          html += `<div class="assert-box" style="margin-top:-8px">` + extra.map(k =>
+            `<div class="assert-line"><span style="color:#dc2626;width:14px;display:inline-block">✗</span>`
+            + `<span style="color:#dc2626">${esc(k)}</span>`
+            + (fails[k] ? `<span style="color:#b45309"> → ${esc(fails[k])}</span>` : '') + `</div>`).join('') + `</div>`;
+        }
+        if (!executed) {
+          html += `<div style="color:#9ca3af;font-size:12px;margin:-8px 0 12px">— Not executed yet — assertions above are the ones defined on this request</div>`;
+        }
+      } else {
+        // No DSL on the request — fall back to whatever the engine reported
+        html += st === 'error' && !lines.length
+          ? `<div style="color:#9ca3af;font-size:12px;margin-bottom:12px">— Not evaluated: the request failed before assertions ran</div>`
+          : lines.length
+          ? `<div class="assert-box">${lines.map(l => `<div class="assert-line" style="color:${l.startsWith('✗') ? '#dc2626' : '#059669'}">${esc(l)}</div>`).join('')}</div>`
+          : `<div style="color:#9ca3af;font-size:12px;margin-bottom:12px">— No assertions defined on this request</div>`;
+      }
       if (!hasCmp && res.targetResponse) {
         html += `<div class="expand-label">Target Response (${esc(res.targetStatus || '—')}${res.targetTimeMs != null ? ' · ' + res.targetTimeMs + ' ms' : ''})</div>` + drawerPre(prettyJson(res.targetResponse));
       }
