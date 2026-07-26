@@ -212,7 +212,10 @@
       <div id="suiteSummaryBar" style="display:none;background:#f8fafc;border:1px solid var(--gray-border);border-radius:10px;padding:14px 18px;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-weight:600;font-size:13px;color:#374151">📊 Suite Results</span>
-          <span id="summaryPassRate" style="font-size:13px;font-weight:700;color:#059669"></span>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="btn btn-amber-outline btn-xs" id="btnRerunFailed" style="display:none" onclick="runFailed()">↻ Re-run failed</button>
+            <span id="summaryPassRate" style="font-size:13px;font-weight:700;color:#059669"></span>
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
           <div class="sum-pill sum-total"  id="sum-total" ><span class="sum-n" id="sn-total"></span><span class="sum-l">Total</span></div>
@@ -288,6 +291,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0">
           <button class="btn btn-teal btn-sm"    id="btnRunGroup">▶ Run Group</button>
+          <button class="btn btn-amber-outline btn-sm" id="btnRunFailedGroup" style="display:none">↻ Re-run failed</button>
           <button class="btn btn-outline btn-sm" id="btnAddCase">+ Add Case</button>
           <div class="export-wrap" style="position:relative">
             <button class="btn btn-outline btn-sm" onclick="toggleGroupExportMenu()">⬇ Export ▾</button>
