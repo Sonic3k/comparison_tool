@@ -68,6 +68,8 @@ header h1 { font-size: 15px; font-weight: 600; flex: 1; }
 /* Re-run one request: same play icon as Run Group/All, inverted colors for recognition */
 .btn-teal-outline { background: #fff; color: var(--teal); border: 1px solid var(--teal); }
 .btn-teal-outline:hover { background: #f0fdfa; }
+.btn-amber-outline { background: #fff; color: #d97706; border: 1px solid #f59e0b; }
+.btn-amber-outline:hover { background: #fffbeb; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-xs { padding: 3px 8px; font-size: 11px; }
 
