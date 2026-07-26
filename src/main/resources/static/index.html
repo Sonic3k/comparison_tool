@@ -214,6 +214,7 @@
           <span style="font-weight:600;font-size:13px;color:#374151">📊 Suite Results</span>
           <div style="display:flex;gap:10px;align-items:center">
             <button class="btn btn-amber-outline btn-xs" id="btnRerunFailed" style="display:none" onclick="runFailed()">↻ Re-run failed</button>
+            <button class="btn btn-outline btn-xs" id="btnRunTeardown" style="display:none" onclick="runTeardown()" title="Run teardown/cleanup only — no tests executed">🧹 Teardown</button>
             <span id="summaryPassRate" style="font-size:13px;font-weight:700;color:#059669"></span>
           </div>
         </div>
@@ -292,6 +293,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0">
           <button class="btn btn-teal btn-sm"    id="btnRunGroup">▶ Run Group</button>
           <button class="btn btn-amber-outline btn-sm" id="btnRunFailedGroup" style="display:none">↻ Re-run failed</button>
+          <button class="btn btn-outline btn-sm" id="btnRunTeardownGroup" style="display:none" title="Run this group's teardown/cleanup only — no tests executed">🧹 Teardown</button>
           <button class="btn btn-outline btn-sm" id="btnAddCase">+ Add Case</button>
           <div class="export-wrap" style="position:relative">
             <button class="btn btn-outline btn-sm" onclick="toggleGroupExportMenu()">⬇ Export ▾</button>
