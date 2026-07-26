@@ -35,7 +35,8 @@ public class ExecutionController {
      * Body (all fields optional):
      *   { "groups": ["User APIs"] }                                → run only these groups (legacy shape, unchanged)
      *   { }                                                        → run everything
-     *   { "scope": "failed", "includeSetup": true }                → re-run every failed/error test case
+     *   { "scope": "failed" }                                      → re-run every failed/error/pending test case
+     *   { "scope": "failed", "groups": ["User APIs"] }             → same, limited to those groups
      *   { "scope": "testcases", "includeSetup": true,
      *     "testCases": [ { "groupName": "User APIs",
      *                      "testCaseId": "TC002" } ] }             → run selected test cases (all their requests, in order)
