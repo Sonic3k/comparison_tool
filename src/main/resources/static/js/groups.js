@@ -31,6 +31,38 @@ function gStats(group) {
   return { total: s.total, passed: s.passed, failed: s.failed + s.error, reqs: s.reqs };
 }
 
+/** Suite-wide TC stats — disabled groups and fully-disabled TCs are excluded
+ *  from every number and counted separately. */
+function suiteOverallStats(groups) {
+  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
+  let disabledTcs = 0, disabledGroups = 0;
+  for (const grp of groups) {
+    if (grp.enabled === false) {
+      disabledGroups++;
+      disabledTcs += tcChunks(grp).length;
+      continue;
+    }
+    const s = tcStats(grp);
+    total += s.total; passed += s.passed; failed += s.failed; error += s.error; reqs += s.reqs;
+    disabledTcs += tcChunks(grp).filter(c => !c.reqs.some(r => r.enabled !== false)).length;
+  }
+  const executed = passed + failed + error;
+  return {
+    total, passed, failed, error, reqs, executed,
+    pending: total - executed,
+    passRate: total > 0 ? Math.round(passed / total * 100) : 0,
+    disabledTcs, disabledGroups
+  };
+}
+
+function disabledNote(s) {
+  if (!s.disabledTcs && !s.disabledGroups) return '';
+  const bits = [];
+  if (s.disabledTcs)    bits.push(`${s.disabledTcs} TC${s.disabledTcs > 1 ? 's' : ''}`);
+  if (s.disabledGroups) bits.push(`${s.disabledGroups} group${s.disabledGroups > 1 ? 's' : ''}`);
+  return bits.join(' + ') + ' disabled';
+}
+
 function filterGroups() { renderGroupGrid(suite?.testGroups || []); }
 
 function renderGroupGrid(groups) {
@@ -79,29 +111,24 @@ function renderSuiteSummary(groups) {
   const bar = document.getElementById('suiteSummaryBar');
   if (!bar) return;
 
-  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
-  for (const grp of groups) {
-    const s = tcStats(grp);
-    total += s.total; passed += s.passed; failed += s.failed; error += s.error; reqs += s.reqs;
-  }
-
-  const executed = passed + failed + error;
-  if (executed === 0) { bar.style.display = 'none'; return; }
+  const s = suiteOverallStats(groups);
+  if (s.executed === 0) { bar.style.display = 'none'; return; }
   bar.style.display = '';
 
-  const pending = total - executed;
-  const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
+  document.getElementById('sn-total').textContent = s.total;
+  document.getElementById('sn-pass').textContent  = s.passed;
+  document.getElementById('sn-fail').textContent  = s.failed;
+  document.getElementById('sn-error').textContent = s.error;
+  document.getElementById('sn-pend').textContent  = s.pending;
 
-  document.getElementById('sn-total').textContent = total;
-  document.getElementById('sn-pass').textContent  = passed;
-  document.getElementById('sn-fail').textContent  = failed;
-  document.getElementById('sn-error').textContent = error;
-  document.getElementById('sn-pend').textContent  = pending;
-  document.getElementById('summaryPassRate').textContent = `${passRate}% pass rate · ${reqs} requests`;
+  const note = disabledNote(s);
+  document.getElementById('summaryPassRate').innerHTML =
+    `${s.passRate}% pass rate · ${s.reqs} requests` +
+    (note ? ` <span style="color:#9ca3af;font-weight:400">· ${note}</span>` : '');
 
-  document.getElementById('bar-pass').style.width  = (passed / total * 100) + '%';
-  document.getElementById('bar-fail').style.width  = (failed / total * 100) + '%';
-  document.getElementById('bar-error').style.width = (error  / total * 100) + '%';
+  document.getElementById('bar-pass').style.width  = (s.total > 0 ? s.passed / s.total * 100 : 0) + '%';
+  document.getElementById('bar-fail').style.width  = (s.total > 0 ? s.failed / s.total * 100 : 0) + '%';
+  document.getElementById('bar-error').style.width = (s.total > 0 ? s.error  / s.total * 100 : 0) + '%';
 }
 
 // ─── Group Toggle ─────────────────────────────────────────────────────────────
@@ -711,43 +738,36 @@ function exportGroupXml(name) {
 // ─── Results Panel ────────────────────────────────────────────────────────────
 function renderResultsPanel() {
   const groups = suite?.testGroups || [];
-  let total = 0, passed = 0, failed = 0, error = 0, reqs = 0;
-
-  for (const grp of groups) {
-    const s = tcStats(grp);
-    total += s.total; passed += s.passed; failed += s.failed; error += s.error; reqs += s.reqs;
-  }
-
-  const executed = passed + failed + error;
-  const pending  = total - executed;
-  const passRate = total > 0 ? Math.round(passed / total * 100) : 0;
+  const s = suiteOverallStats(groups);
 
   const empty   = document.getElementById('resultsEmpty');
   const summBox = document.getElementById('resultsSummaryBox');
   const breakdown = document.getElementById('resultsGroupBreakdown');
 
-  if (executed === 0) {
+  if (s.executed === 0) {
     empty.style.display = ''; summBox.style.display = 'none';
     breakdown.innerHTML = ''; return;
   }
 
   empty.style.display = 'none'; summBox.style.display = '';
 
-  // Overall numbers
-  document.getElementById('resultsPassRate').textContent = passRate + '%';
-  document.getElementById('rs-total').textContent = total;
-  document.getElementById('rs-pass').textContent  = passed;
-  document.getElementById('rs-fail').textContent  = failed;
-  document.getElementById('rs-error').textContent = error;
-  document.getElementById('rs-pend').textContent  = pending;
-  document.getElementById('rs-bar-pass').style.width  = (passed / total * 100) + '%';
-  document.getElementById('rs-bar-fail').style.width  = (failed / total * 100) + '%';
-  document.getElementById('rs-bar-error').style.width = (error  / total * 100) + '%';
+  // Overall numbers — enabled groups / enabled test cases only
+  document.getElementById('resultsPassRate').textContent = s.passRate + '%';
+  document.getElementById('rs-total').textContent = s.total;
+  document.getElementById('rs-pass').textContent  = s.passed;
+  document.getElementById('rs-fail').textContent  = s.failed;
+  document.getElementById('rs-error').textContent = s.error;
+  document.getElementById('rs-pend').textContent  = s.pending;
+  document.getElementById('rs-bar-pass').style.width  = (s.total > 0 ? s.passed / s.total * 100 : 0) + '%';
+  document.getElementById('rs-bar-fail').style.width  = (s.total > 0 ? s.failed / s.total * 100 : 0) + '%';
+  document.getElementById('rs-bar-error').style.width = (s.total > 0 ? s.error  / s.total * 100 : 0) + '%';
+  const note = disabledNote(s);
   document.getElementById('resultsRunAt').textContent =
-    'Last run: ' + new Date().toLocaleTimeString();
+    'Last run: ' + new Date().toLocaleTimeString() + (note ? ' · ' + note : '');
 
   // Per-group breakdown
   breakdown.innerHTML = groups.map(grp => {
+    const gDisabled = grp.enabled === false;
     const gs = tcStats(grp);
     const gPass = gs.passed, gFail = gs.failed, gError = gs.error, gPend = gs.pending, gTotal = gs.total;
     const gRate  = gTotal > 0 ? Math.round(gPass / gTotal * 100) : 0;
@@ -763,11 +783,13 @@ function renderResultsPanel() {
       return { tcId: c.tcId, roll, firstBad, count: en.length, def: defs.get(c.tcId) };
     }).filter(Boolean);
 
-    return `<div class="box" style="margin-bottom:12px">
+    return `<div class="box" style="margin-bottom:12px${gDisabled ? ';opacity:.55' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-weight:600;font-size:14px;cursor:pointer;color:var(--blue)"
-             onclick="openGroupDetail('${esc(grp.name)}')">${esc(grp.name)}</div>
-        <span style="font-size:13px;font-weight:700;color:${gRate===100?'#059669':'#d97706'}">${gRate}%</span>
+             onclick="openGroupDetail('${esc(grp.name)}')">${esc(grp.name)}${gDisabled ? ' <span style="font-size:11px;color:#9ca3af;font-weight:400">(disabled — not in overall)</span>' : ''}</div>
+        ${gDisabled
+          ? `<span style="font-size:12px;font-weight:600;color:#9ca3af">disabled</span>`
+          : `<span style="font-size:13px;font-weight:700;color:${gRate===100?'#059669':'#d97706'}">${gRate}%</span>`}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <div class="sum-pill sum-total"><span class="sum-n">${gTotal}</span><span class="sum-l">Total</span></div>
