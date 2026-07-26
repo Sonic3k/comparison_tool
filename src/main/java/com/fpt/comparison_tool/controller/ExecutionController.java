@@ -37,6 +37,8 @@ public class ExecutionController {
      *   { }                                                        → run everything
      *   { "scope": "failed" }                                      → re-run every failed/error/pending test case
      *   { "scope": "failed", "groups": ["User APIs"] }             → same, limited to those groups
+     *   { "scope": "teardown" }                                    → cleanup only: every TEARDOWN-phase request + Global Teardown groups
+     *   { "scope": "teardown", "groups": ["User APIs"] }           → teardown of those groups only (no Global Teardown)
      *   { "scope": "testcases", "includeSetup": true,
      *     "testCases": [ { "groupName": "User APIs",
      *                      "testCaseId": "TC002" } ] }             → run selected test cases (all their requests, in order)
