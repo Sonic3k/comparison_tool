@@ -43,6 +43,8 @@ public class ExecutionController {
      *     "testCases": [ { "groupName": "User APIs",
      *                      "testCaseId": "TC002" } ] }             → run selected test cases (all their requests, in order)
      *
+     * Disabled groups never run, in any scope.
+     *
      * includeSetup (default true) wraps scoped runs with the group's
      * setup/teardown phases and any Global Setup/Teardown groups, so
      * {{variables}} resolve exactly like in a full run.
