@@ -227,6 +227,7 @@ public class ExecutionService {
             }
             List<TestGroup> groups = new ArrayList<>();
             for (TestGroup g : suite.getTestGroups()) {
+                if (!g.isEnabled()) continue;   // disabled groups never run, in any scope
                 boolean isGlobal = g.getName().startsWith(GLOBAL_SETUP_PREFIX)
                         || g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX);
                 if (byGroup.containsKey(g.getName()) || (isGlobal && includeSetup)) {
@@ -929,10 +930,11 @@ public class ExecutionService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Groups in scope for an all/groups run. Disabled groups never run, in any scope. */
     private List<TestGroup> filterGroups(TestSuite suite, List<String> filter) {
-        if (filter == null || filter.isEmpty()) return suite.getTestGroups();
         return suite.getTestGroups().stream()
-                .filter(g -> filter.contains(g.getName()))
+                .filter(TestGroup::isEnabled)
+                .filter(g -> filter == null || filter.isEmpty() || filter.contains(g.getName()))
                 .collect(Collectors.toList());
     }
 
