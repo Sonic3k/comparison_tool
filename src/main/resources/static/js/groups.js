@@ -521,7 +521,11 @@ async function deleteCase(groupName, caseId) {
 
 // ─── Execution ────────────────────────────────────────────────────────────────
 async function runAll()       { await startExec([], 'All groups'); }
-async function runGroup(name) { await startExec([name], `Group "${name}"`); }
+async function runGroup(name) {
+  const grp = suite?.testGroups?.find(g => g.name === name);
+  if (grp && grp.enabled === false) { toast(`Group "${name}" is disabled — enable it first`, true); return; }
+  await startExec([name], `Group "${name}"`);
+}
 
 /** Re-run everything not yet green — failed, error and pending test cases.
  *  Group setup/teardown phases and Global Setup/Teardown always run. */
@@ -647,6 +651,8 @@ async function startExec(groups, label) { await startExecBody({ groups }, label)
 /** Run ONE logical test case — its member requests run sequentially; group
  *  setup/teardown and Global Setup are included so {{variables}} resolve. */
 async function runTestCase(groupName, tcId) {
+  const grp = suite?.testGroups?.find(g => g.name === groupName);
+  if (grp && grp.enabled === false) { toast(`Group "${groupName}" is disabled — enable it first`, true); return; }
   await startExecBody({
     scope: 'testcases',
     includeSetup: true,
