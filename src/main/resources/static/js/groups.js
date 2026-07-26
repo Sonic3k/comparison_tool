@@ -126,6 +126,14 @@ function renderSuiteSummary(groups) {
     `${s.passRate}% pass rate · ${s.reqs} requests` +
     (note ? ` <span style="color:#9ca3af;font-weight:400">· ${note}</span>` : '');
 
+  const rerun = document.getElementById('btnRerunFailed');
+  if (rerun) {
+    const unfinished = s.failed + s.error + s.pending;
+    rerun.style.display = unfinished > 0 ? '' : 'none';
+    rerun.textContent = `↻ Re-run failed (${unfinished})`;
+    rerun.title = `Re-run ${s.failed + s.error} failed · ${s.pending} pending — setup, variables & teardown always run`;
+  }
+
   document.getElementById('bar-pass').style.width  = (s.total > 0 ? s.passed / s.total * 100 : 0) + '%';
   document.getElementById('bar-fail').style.width  = (s.total > 0 ? s.failed / s.total * 100 : 0) + '%';
   document.getElementById('bar-error').style.width = (s.total > 0 ? s.error  / s.total * 100 : 0) + '%';
@@ -178,6 +186,7 @@ function openGroupDetail(name) {
 
   document.getElementById('breadcrumbGroup').textContent = name;
   document.getElementById('btnRunGroup').onclick    = () => runGroup(name);
+  document.getElementById('btnRunFailedGroup').onclick = () => runFailedGroup(name);
   document.getElementById('btnAddCase').onclick     = () => showCaseModal(name);
   document.getElementById('btnDeleteGroup').onclick = () => deleteGroupByName(name);
   document.getElementById('groupExportXml').onclick = e => {
@@ -227,6 +236,15 @@ function renderDetailStats(grp) {
       <div class="stat-box amber"><div class="stat-num">${pend}</div><div class="stat-lbl">Pending</div></div>
     </div>
     <div style="font-size:11px;color:#9ca3af;margin:-8px 0 12px">${st.reqs} requests in ${st.total} test cases</div>`;
+
+  const rerun = document.getElementById('btnRunFailedGroup');
+  if (rerun) {
+    const unfinished = st.total - st.passed;
+    const executed = st.passed + st.failed > 0;
+    const show = grp.enabled !== false && executed && unfinished > 0;
+    rerun.style.display = show ? '' : 'none';
+    if (show) rerun.textContent = `↻ Re-run failed (${unfinished})`;
+  }
 }
 
 function modeBadge(mode) {
@@ -492,6 +510,11 @@ async function deleteCase(groupName, caseId) {
 // ─── Execution ────────────────────────────────────────────────────────────────
 async function runAll()       { await startExec([], 'All groups'); }
 async function runGroup(name) { await startExec([name], `Group "${name}"`); }
+
+/** Re-run everything not yet green — failed, error and pending test cases.
+ *  Group setup/teardown phases and Global Setup/Teardown always run. */
+async function runFailed()          { await startExecBody({ scope: 'failed' }, 'Failed & pending — all groups'); }
+async function runFailedGroup(name) { await startExecBody({ scope: 'failed', groups: [name] }, `Failed & pending — "${name}"`); }
 
 // ─── Re-run a single case ─────────────────────────────────────────────────────
 async function rerunCase(groupName, caseId, btnEl) {
