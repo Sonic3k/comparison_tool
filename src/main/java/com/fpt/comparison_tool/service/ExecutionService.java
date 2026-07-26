@@ -68,7 +68,7 @@ public class ExecutionService {
             VerificationMode suiteFilter = suite.getSettings().getExecutionConfig().getVerificationMode();
             plannedKeys = new ArrayList<>();
             for (TestGroup g : scope.groups()) {
-                for (TestRequest r : runnableRequests(g, suiteFilter, scope.filterFor(g), scope.runSetupTeardown(g))) {
+                for (TestRequest r : runnableRequests(g, suiteFilter, scope.filterFor(g), scope.runSetupTeardown(g), scope.teardownOnlyFor(g))) {
                     plannedKeys.add(ExecutionProgress.key(g.getName(), r.getId()));
                 }
             }
@@ -111,7 +111,7 @@ public class ExecutionService {
                 // 1. Global Setup groups — sequential, variables go to suiteVars
                 for (TestGroup g : setupGroups) {
                     if (progress.isStopRequested()) break;
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true);
+                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
                 }
 
                 // 2. Normal groups — each gets its own groupVars (initialized with suiteVars)
@@ -120,13 +120,13 @@ public class ExecutionService {
                         if (progress.isStopRequested()) break;
                         Map<String, String> groupVars = new ConcurrentHashMap<>(suiteVars);
                         executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, groupVars,
-                                fScope.filterFor(g), fScope.runSetupTeardown(g));
+                                fScope.filterFor(g), fScope.runSetupTeardown(g), fScope.teardownOnlyFor(g));
                     }
                 }
 
                 // 3. Global Teardown groups — sequential, ALWAYS run (even after stop)
                 for (TestGroup g : teardownGroups) {
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true);
+                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
                 }
 
             } catch (Exception e) {
@@ -154,10 +154,16 @@ public class ExecutionService {
     private record ResolvedScope(List<TestGroup> groups,
                                  Map<String, Set<String>> tcFilter,
                                  boolean includeSetup,
+                                 boolean teardownOnly,
                                  String emptyReason) {
 
         Set<String> filterFor(TestGroup g) {
             return tcFilter == null ? null : tcFilter.get(g.getName());
+        }
+
+        /** Teardown-only cleanup applies to normal groups; Global Teardown groups run in full. */
+        boolean teardownOnlyFor(TestGroup g) {
+            return teardownOnly && !g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX);
         }
 
         boolean runSetupTeardown(TestGroup g) {
@@ -174,18 +180,40 @@ public class ExecutionService {
         boolean includeSetup = request == null
                 || request.getIncludeSetup() == null || request.getIncludeSetup();
 
+        if ("teardown".equals(scope)) {
+            List<String> groupNames = request != null ? request.getGroups() : null;
+            boolean suiteLevel = groupNames == null || groupNames.isEmpty();
+            List<TestGroup> groups = new ArrayList<>();
+            for (TestGroup g : suite.getTestGroups()) {
+                if (!g.isEnabled()) continue;
+                if (g.getName().startsWith(GLOBAL_SETUP_PREFIX)) continue;   // never in cleanup mode
+                boolean isGlobalTeardown = g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX);
+                if (suiteLevel) {
+                    if (isGlobalTeardown || hasTeardownRequests(g)) groups.add(g);
+                } else if (!isGlobalTeardown && groupNames.contains(g.getName()) && hasTeardownRequests(g)) {
+                    // group-level cleanup: only that group's teardown, no Global Teardown
+                    groups.add(g);
+                }
+            }
+            if (groups.isEmpty()) {
+                return new ResolvedScope(List.of(), null, includeSetup, true,
+                        "No teardown requests to run for the requested scope");
+            }
+            return new ResolvedScope(groups, null, includeSetup, true, null);
+        }
+
         List<ExecutionStartRequest.TestCaseRef> refs = null;
         if ("failed".equals(scope)) {
             refs = collectFailedTestCases(suite, request != null ? request.getGroups() : null);
             if (refs.isEmpty()) {
-                return new ResolvedScope(List.of(), Map.of(), includeSetup,
+                return new ResolvedScope(List.of(), Map.of(), includeSetup, false,
                         "No failed or pending test cases to re-run");
             }
         } else if ("testcases".equals(scope)
                 || (request != null && request.getTestCases() != null && !request.getTestCases().isEmpty())) {
             refs = request != null ? request.getTestCases() : null;
             if (refs == null || refs.isEmpty()) {
-                return new ResolvedScope(List.of(), Map.of(), includeSetup,
+                return new ResolvedScope(List.of(), Map.of(), includeSetup, false,
                         "No test cases specified");
             }
         }
@@ -205,12 +233,12 @@ public class ExecutionService {
                     groups.add(g);
                 }
             }
-            return new ResolvedScope(groups, byGroup, includeSetup, null);
+            return new ResolvedScope(groups, byGroup, includeSetup, false, null);
         }
 
         // all / groups scope — legacy body { "groups": [...] } lands here
         List<String> groupNames = request != null ? request.getGroups() : null;
-        return new ResolvedScope(filterGroups(suite, groupNames), null, true, null);
+        return new ResolvedScope(filterGroups(suite, groupNames), null, true, false, null);
     }
 
     /**
@@ -250,12 +278,24 @@ public class ExecutionService {
         return refs;
     }
 
+    private boolean hasTeardownRequests(TestGroup g) {
+        for (TestRequest r : g.getTestRequests()) {
+            if (r.isEnabled() && r.getPhase() == Phase.TEARDOWN) return true;
+        }
+        return false;
+    }
+
     /** The requests of a group that will actually execute under the given scope. */
     private List<TestRequest> runnableRequests(TestGroup group, VerificationMode suiteFilter,
-                                               Set<String> tcFilter, boolean runSetupTeardown) {
+                                               Set<String> tcFilter, boolean runSetupTeardown,
+                                               boolean teardownOnly) {
         List<TestRequest> out = new ArrayList<>();
         for (TestRequest r : group.getTestRequests()) {
             if (!r.isEnabled() || shouldSkip(r, suiteFilter)) continue;
+            if (teardownOnly) {
+                if (r.getPhase() == Phase.TEARDOWN) out.add(r);
+                continue;
+            }
             boolean setupOrTeardown = r.getPhase() == Phase.SETUP || r.getPhase() == Phase.TEARDOWN;
             if (setupOrTeardown) {
                 if (runSetupTeardown) out.add(r);
@@ -274,9 +314,10 @@ public class ExecutionService {
                               Environment sourceEnv, Environment targetEnv,
                               ExecutionProgress progress,
                               Map<String, String> variables,
-                              Set<String> tcFilter, boolean runSetupTeardown) {
+                              Set<String> tcFilter, boolean runSetupTeardown,
+                              boolean teardownOnly) {
 
-        List<TestRequest> runnable = runnableRequests(group, suiteFilter, tcFilter, runSetupTeardown);
+        List<TestRequest> runnable = runnableRequests(group, suiteFilter, tcFilter, runSetupTeardown, teardownOnly);
 
         // Split by phase
         List<TestRequest> setupReqs    = runnable.stream().filter(r -> r.getPhase() == Phase.SETUP).collect(Collectors.toList());
