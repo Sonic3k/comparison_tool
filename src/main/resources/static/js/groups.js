@@ -134,6 +134,9 @@ function renderSuiteSummary(groups) {
     rerun.title = `Re-run ${s.failed + s.error} failed · ${s.pending} pending — setup, variables & teardown always run`;
   }
 
+  const td = document.getElementById('btnRunTeardown');
+  if (td) td.style.display = suiteHasTeardown(groups) ? '' : 'none';
+
   document.getElementById('bar-pass').style.width  = (s.total > 0 ? s.passed / s.total * 100 : 0) + '%';
   document.getElementById('bar-fail').style.width  = (s.total > 0 ? s.failed / s.total * 100 : 0) + '%';
   document.getElementById('bar-error').style.width = (s.total > 0 ? s.error  / s.total * 100 : 0) + '%';
@@ -187,6 +190,7 @@ function openGroupDetail(name) {
   document.getElementById('breadcrumbGroup').textContent = name;
   document.getElementById('btnRunGroup').onclick    = () => runGroup(name);
   document.getElementById('btnRunFailedGroup').onclick = () => runFailedGroup(name);
+  document.getElementById('btnRunTeardownGroup').onclick = () => runTeardownGroup(name);
   document.getElementById('btnAddCase').onclick     = () => showCaseModal(name);
   document.getElementById('btnDeleteGroup').onclick = () => deleteGroupByName(name);
   document.getElementById('groupExportXml').onclick = e => {
@@ -244,6 +248,14 @@ function renderDetailStats(grp) {
     const show = grp.enabled !== false && executed && unfinished > 0;
     rerun.style.display = show ? '' : 'none';
     if (show) rerun.textContent = `↻ Re-run failed (${unfinished})`;
+  }
+
+  const td = document.getElementById('btnRunTeardownGroup');
+  if (td) {
+    const isGlobal = grp.name.startsWith('Global Setup') || grp.name.startsWith('Global Teardown');
+    const has = !isGlobal && grp.enabled !== false &&
+      (grp.testRequests || []).some(r => r.enabled !== false && r.phase === 'teardown');
+    td.style.display = has ? '' : 'none';
   }
 }
 
@@ -515,6 +527,20 @@ async function runGroup(name) { await startExec([name], `Group "${name}"`); }
  *  Group setup/teardown phases and Global Setup/Teardown always run. */
 async function runFailed()          { await startExecBody({ scope: 'failed' }, 'Failed & pending — all groups'); }
 async function runFailedGroup(name) { await startExecBody({ scope: 'failed', groups: [name] }, `Failed & pending — "${name}"`); }
+
+/** Cleanup only — every TEARDOWN-phase request; suite level also runs Global Teardown groups. */
+async function runTeardown()          { await startExecBody({ scope: 'teardown' }, 'Teardown — all groups'); }
+async function runTeardownGroup(name) { await startExecBody({ scope: 'teardown', groups: [name] }, `Teardown — "${name}"`); }
+
+function suiteHasTeardown(groups) {
+  return groups.some(g => {
+    if (g.enabled === false) return false;
+    if (g.name.startsWith('Global Setup')) return false;
+    const reqs = g.testRequests || [];
+    if (g.name.startsWith('Global Teardown')) return reqs.some(r => r.enabled !== false);
+    return reqs.some(r => r.enabled !== false && r.phase === 'teardown');
+  });
+}
 
 // ─── Re-run a single case ─────────────────────────────────────────────────────
 async function rerunCase(groupName, caseId, btnEl) {
