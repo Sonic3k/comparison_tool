@@ -176,10 +176,10 @@ public class ExecutionService {
 
         List<ExecutionStartRequest.TestCaseRef> refs = null;
         if ("failed".equals(scope)) {
-            refs = collectFailedTestCases(suite);
+            refs = collectFailedTestCases(suite, request != null ? request.getGroups() : null);
             if (refs.isEmpty()) {
                 return new ResolvedScope(List.of(), Map.of(), includeSetup,
-                        "No failed test cases to re-run");
+                        "No failed or pending test cases to re-run");
             }
         } else if ("testcases".equals(scope)
                 || (request != null && request.getTestCases() != null && !request.getTestCases().isEmpty())) {
@@ -213,22 +213,37 @@ public class ExecutionService {
         return new ResolvedScope(filterGroups(suite, groupNames), null, true, null);
     }
 
-    /** Every enabled test case whose rolled-up status is failed/error. */
-    private List<ExecutionStartRequest.TestCaseRef> collectFailedTestCases(TestSuite suite) {
+    /**
+     * Every enabled TEST-phase test case that is not yet green — rolled-up
+     * status failed, error, or pending (never executed / stopped mid-run).
+     *
+     * Setup/teardown phase requests are never selected here: scoped runs always
+     * execute them anyway. Requests hidden by the suite Verification Mode
+     * filter are ignored so the count matches what will actually run.
+     *
+     * groupFilter null/empty → whole suite; otherwise only those groups.
+     */
+    private List<ExecutionStartRequest.TestCaseRef> collectFailedTestCases(TestSuite suite,
+                                                                           List<String> groupFilter) {
+        VerificationMode vm = suite.getSettings().getExecutionConfig().getVerificationMode();
+        Set<String> allow = groupFilter == null || groupFilter.isEmpty()
+                ? null : new LinkedHashSet<>(groupFilter);
         List<ExecutionStartRequest.TestCaseRef> refs = new ArrayList<>();
         for (TestGroup g : suite.getTestGroups()) {
             if (!g.isEnabled()) continue;
             if (g.getName().startsWith(GLOBAL_SETUP_PREFIX)
                     || g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) continue;
+            if (allow != null && !allow.contains(g.getName())) continue;
             Set<String> added = new LinkedHashSet<>();
             for (TestRequest r : g.getTestRequests()) {
-                if (!r.isEnabled() || r.getResult() == null || r.getResult().getStatus() == null) continue;
-                ExecutionStatus st = r.getResult().getStatus();
-                if (st == ExecutionStatus.FAILED || st == ExecutionStatus.ERROR) {
-                    String tcId = r.getTestCaseId() != null ? r.getTestCaseId() : r.getId();
-                    if (added.add(tcId)) {
-                        refs.add(new ExecutionStartRequest.TestCaseRef(g.getName(), tcId));
-                    }
+                Phase phase = r.getPhase() != null ? r.getPhase() : Phase.TEST;
+                if (!r.isEnabled() || phase != Phase.TEST || shouldSkip(r, vm)) continue;
+                ExecutionStatus st = r.getResult() != null && r.getResult().getStatus() != null
+                        ? r.getResult().getStatus() : ExecutionStatus.PENDING;
+                if (st == ExecutionStatus.PASSED) continue;
+                String tcId = r.getTestCaseId() != null ? r.getTestCaseId() : r.getId();
+                if (added.add(tcId)) {
+                    refs.add(new ExecutionStartRequest.TestCaseRef(g.getName(), tcId));
                 }
             }
         }
