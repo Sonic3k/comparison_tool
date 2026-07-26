@@ -9,7 +9,7 @@ import java.util.List;
  *   all        — run every enabled group (default when nothing else is set)
  *   groups     — run only the named groups            → { "groups": ["User APIs"] }
  *   testcases  — run only the referenced test cases   → { "scope": "testcases", "testCases": [{"groupName":"User APIs","testCaseId":"TC002"}] }
- *   failed     — re-run every test case whose rolled-up status is failed/error
+ *   failed     — re-run every test case not yet green (failed/error/pending); optional "groups" limits the scan
  *
  * The legacy body { "groups": [...] } still works unchanged (scope inferred).
  *
