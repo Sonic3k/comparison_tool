@@ -10,6 +10,7 @@ import java.util.List;
  *   groups     — run only the named groups            → { "groups": ["User APIs"] }
  *   testcases  — run only the referenced test cases   → { "scope": "testcases", "testCases": [{"groupName":"User APIs","testCaseId":"TC002"}] }
  *   failed     — re-run every test case not yet green (failed/error/pending); optional "groups" limits the scan
+ *   teardown   — cleanup only: run every TEARDOWN-phase request (+ Global Teardown groups at suite level); optional "groups" limits it
  *
  * The legacy body { "groups": [...] } still works unchanged (scope inferred).
  *
