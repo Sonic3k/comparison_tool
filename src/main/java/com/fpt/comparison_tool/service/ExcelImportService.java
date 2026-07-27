@@ -229,24 +229,30 @@ public class ExcelImportService {
         // when Test Case ID is present); older 28/29/30-col sheets lack it.
         boolean hasAuthProfile = headerRow != null
                 && "Auth Profile".equalsIgnoreCase(cell(headerRow, 14 + (newLayout ? 1 : 0)));
+        // 32-col layout adds "Delay (ms)" right after Auth Profile.
+        boolean hasDelay = headerRow != null
+                && "Delay (ms)".equalsIgnoreCase(cell(headerRow, 15 + (newLayout ? 1 : 0)));
 
         // Data starts at row 8 (0-based index 7)
         for (int r = 7; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null || cell(row, 0).isEmpty()) continue;
-            group.addTestRequest(parseTestRequestRow(row, newLayout, hasAuthProfile));
+            group.addTestRequest(parseTestRequestRow(row, newLayout, hasAuthProfile, hasDelay));
         }
         group.normalize();
         return group;
     }
 
-    private TestRequest parseTestRequestRow(Row row, boolean newLayout, boolean hasAuthProfile) {
+    private TestRequest parseTestRequestRow(Row row, boolean newLayout, boolean hasAuthProfile,
+                                            boolean hasDelay) {
         TestRequest tc = new TestRequest();
 
         // Offsets: "Test Case ID" at column 1 shifts everything after ID by +1;
-        // "Auth Profile" after Extract Variables shifts TEAL and later by +1 more.
+        // "Auth Profile" after Extract Variables shifts TEAL and later by +1 more;
+        // "Delay (ms)" after Auth Profile shifts TEAL and later by +1 again.
         int o = newLayout ? 1 : 0;
         int a = hasAuthProfile ? 1 : 0;
+        int d = hasDelay ? 1 : 0;
 
         // ── GREEN ────────────────────────────────────────────────────────────
         tc.setId(cell(row, 0));
@@ -271,13 +277,14 @@ public class ExcelImportService {
             String ap = cell(row, 14 + o);
             tc.setAuthProfile(ap.isEmpty() ? null : ap);
         }
+        if (hasDelay) tc.setDelayMs(parseInt(cell(row, 15 + o), 0));
 
         // ── TEAL ─────────────────────────────────────────────────────────────
-        String ignoreFields = cell(row, 14 + o + a);
-        String ignoreOrder  = cell(row, 15 + o + a);
-        String cmpErrors    = cell(row, 16 + o + a);
-        String numTol       = cell(row, 17 + o + a);
-        String caseSens     = cell(row, 18 + o + a);
+        String ignoreFields = cell(row, 14 + o + a + d);
+        String ignoreOrder  = cell(row, 15 + o + a + d);
+        String cmpErrors    = cell(row, 16 + o + a + d);
+        String numTol       = cell(row, 17 + o + a + d);
+        String caseSens     = cell(row, 18 + o + a + d);
 
         if (!ignoreFields.isEmpty() || !ignoreOrder.isEmpty() || !cmpErrors.isEmpty()
                 || !numTol.isEmpty() || !caseSens.isEmpty()) {
@@ -291,10 +298,10 @@ public class ExcelImportService {
         }
 
         // ── PURPLE ───────────────────────────────────────────────────────────
-        String expStatus  = cell(row, 19 + o + a);
-        String expBody    = cell(row, 20 + o + a);
-        String expHeaders = cell(row, 21 + o + a);
-        String maxRt      = cell(row, 22 + o + a);
+        String expStatus  = cell(row, 19 + o + a + d);
+        String expBody    = cell(row, 20 + o + a + d);
+        String expHeaders = cell(row, 21 + o + a + d);
+        String maxRt      = cell(row, 22 + o + a + d);
 
         if (!expStatus.isEmpty() || !expBody.isEmpty() || !expHeaders.isEmpty() || !maxRt.isEmpty()) {
             AutomationConfig auto = new AutomationConfig();
@@ -306,15 +313,15 @@ public class ExcelImportService {
         }
 
         // ── RED ──────────────────────────────────────────────────────────────
-        String overallStatus = cell(row, 23 + o + a);
+        String overallStatus = cell(row, 23 + o + a + d);
         if (!overallStatus.isEmpty()) {
             TestResult result = new TestResult();
             result.setStatus(parseEnum(ExecutionStatus.class, overallStatus.toUpperCase(), ExecutionStatus.PENDING));
-            result.setModeRun(cell(row, 24 + o + a));
-            result.setComparisonResult(cell(row, 25 + o + a));
-            result.setAssertionResult(cell(row, 26 + o + a));
-            result.setExecutedAt(cell(row, 27 + o + a));
-            parseResponseTimes(cell(row, 28 + o + a), result);   // column may be absent in older files
+            result.setModeRun(cell(row, 24 + o + a + d));
+            result.setComparisonResult(cell(row, 25 + o + a + d));
+            result.setAssertionResult(cell(row, 26 + o + a + d));
+            result.setExecutedAt(cell(row, 27 + o + a + d));
+            parseResponseTimes(cell(row, 28 + o + a + d), result);   // column may be absent in older files
             tc.setResult(result);
         }
 
