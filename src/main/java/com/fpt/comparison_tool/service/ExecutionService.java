@@ -328,7 +328,7 @@ public class ExecutionService {
         // 1. Setup — always sequential
         for (TestRequest r : setupReqs) {
             if (progress.isStopRequested()) break;
-            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables, true);
         }
 
         // 2. Test — requests of the SAME test case always run sequentially in
@@ -346,7 +346,7 @@ public class ExecutionService {
                         .map(chunk -> CompletableFuture.runAsync(() -> {
                             for (TestRequest r : chunk) {
                                 if (progress.isStopRequested()) return;
-                                executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+                                executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables, true);
                             }
                         }, executor))
                         .collect(Collectors.toList());
@@ -354,14 +354,14 @@ public class ExecutionService {
             } else {
                 for (TestRequest r : testReqs) {
                     if (progress.isStopRequested()) break;
-                    executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+                    executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables, true);
                 }
             }
         }
 
         // 3. Teardown — always sequential, ALWAYS runs (even after stop)
         for (TestRequest r : teardownReqs) {
-            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables);
+            executeAndRecord(r, group, suite, sourceEnv, targetEnv, progress, variables, true);
         }
     }
 
@@ -418,7 +418,7 @@ public class ExecutionService {
         // Use a throwaway progress so executeAndRecord doesn't touch the real one
         ExecutionProgress dummy = new ExecutionProgress();
         dummy.start(1);
-        executeAndRecord(tc, group, suite, sourceEnv, targetEnv, dummy, variables);
+        executeAndRecord(tc, group, suite, sourceEnv, targetEnv, dummy, variables, false);   // single re-run: no delay
         dummy.finish();
 
         return tc;
@@ -427,7 +427,7 @@ public class ExecutionService {
     private void executeAndRecord(TestRequest tc, TestGroup group, TestSuite suite,
                                   Environment sourceEnv, Environment targetEnv,
                                   ExecutionProgress progress,
-                                  Map<String, String> variables) {
+                                  Map<String, String> variables, boolean applyDelay) {
         VerificationMode verificationMode = tc.getVerificationMode() != null
                 ? tc.getVerificationMode() : VerificationMode.COMPARISON;
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FMT);
@@ -441,6 +441,9 @@ public class ExecutionService {
         resolved = resolveVariables(resolved, globalVarMap(suite));
 
         try {
+            // Per-request delay (async data flows). Skipped for single re-runs.
+            if (applyDelay && tc.getDelayMs() > 0) Thread.sleep(tc.getDelayMs());
+
             int delayMs = suite.getSettings().getExecutionConfig().getDelayBetweenRequests();
             AuthProfile targetAuth = resolveAuthProfile(suite, tc, targetEnv);
 
@@ -802,6 +805,7 @@ public class ExecutionService {
         copy.setHeaders(substituteVars(tc.getHeaders(), variables));
         copy.setAuthor(tc.getAuthor());
         copy.setAuthProfile(tc.getAuthProfile());
+        copy.setDelayMs(tc.getDelayMs());
         copy.setExtractVariables(tc.getExtractVariables());
         copy.setComparisonConfig(tc.getComparisonConfig());
         copy.setAutomationConfig(substituteAutomation(tc.getAutomationConfig(), variables));
