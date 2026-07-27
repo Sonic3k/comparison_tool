@@ -273,6 +273,7 @@ function caseBadges(tc, grouped) {
   let b = '';
   if (!grouped && tc.testCaseId && tc.testCaseId !== tc.id) b += `<span class="tc-mini tcid" title="Belongs to test case ${esc(tc.testCaseId)}">${esc(tc.testCaseId)}</span>`;
   if (tc.phase && tc.phase !== 'test') b += `<span class="tc-mini ${esc(tc.phase)}">${esc(tc.phase)}</span>`;
+  if (tc.delayMs > 0) b += `<span class="tc-mini delay" title="Delay before this request fires">⏱ ${tc.delayMs}ms</span>`;
   if (tc.extractVariables) b += `<span class="tc-mini vars" title="Extracts: ${esc(tc.extractVariables)}">vars</span>`;
   return b;
 }
@@ -404,6 +405,7 @@ function showCaseModal(groupName, tc = null) {
     sv('tc-verificationMode', tc.verificationMode || 'comparison');
     sv('tc-testCaseId', tc.testCaseId && tc.testCaseId !== tc.id ? tc.testCaseId : '');
     sv('tc-phase', tc.phase || 'test');
+    sv('tc-delay', tc.delayMs > 0 ? String(tc.delayMs) : '');
     sv('tc-extract', tc.extractVariables || '');
     populateAuthProfileSelect(tc.authProfile || '');
     sv('tc-endpoint', tc.endpoint); sv('tc-author', tc.author);
@@ -428,6 +430,7 @@ function showCaseModal(groupName, tc = null) {
     populateAuthProfileSelect('');
     sv('tc-method', 'GET'); sv('tc-enabled', 'true'); sv('tc-verificationMode', 'comparison');
     sv('tc-phase', 'test');
+    sv('tc-delay', '');
     sv('tc-caseSens', ''); sv('tc-ignoreOrder', ''); sv('tc-compareErrorResponses', '');
   }
   updateModeUI();
@@ -467,6 +470,7 @@ async function saveTestCase() {
     id: g('tc-id'), name: g('tc-name'), description: g('tc-desc'),
     enabled: g('tc-enabled') === 'true', verificationMode: mode, method: g('tc-method'),
     testCaseId: g('tc-testCaseId') || null, phase: g('tc-phase') || 'test',
+    delayMs: Math.max(0, parseInt(g('tc-delay'), 10) || 0),
     extractVariables: g('tc-extract'),
     authProfile: g('tc-authprofile') || null,
     endpoint: g('tc-endpoint'), author: g('tc-author'),
@@ -975,6 +979,7 @@ function renderCaseDrawer() {
   const sub = [esc(drawerCase.group)];
   if (tc.testCaseId && tc.testCaseId !== tc.id) sub.push('Test case <b>' + esc(tc.testCaseId) + '</b>');
   if (tc.phase && tc.phase !== 'test') sub.push(esc(tc.phase));
+  if (tc.delayMs > 0) sub.push('⏱ ' + tc.delayMs + 'ms');
   if (tc.name) sub.push(esc(tc.name));
   document.getElementById('drawerSub').innerHTML = sub.join(' · ');
 
