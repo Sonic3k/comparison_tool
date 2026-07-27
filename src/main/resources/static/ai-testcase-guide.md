@@ -75,6 +75,7 @@ Example — one test case made of two requests:
 | `author` | string | `""` | Author email |
 | `extractVariables` | string | `""` | Extract values from response — see Variable Extraction section |
 | `authProfile` | string | `null` | Auth override: name of an Auth Profile to use for this request (both sides). Blank/absent = the environment's profile |
+| `delayMs` | number | `0` | Delay in ms **before** this request fires — for async flows where the previous request's data needs time to land. 0/absent = no delay. Exports to JMeter as a Constant Timer on the sampler |
 | `comparisonConfig` | object | `null` | Per-TC comparison overrides — see Comparison Config section |
 | `automationConfig` | object | `null` | Automation assertions — required when `verificationMode` is `automation` or `both` |
 | `result` | object | `null` | Leave as `null` — tool populates this after execution |
@@ -596,10 +597,10 @@ groups with settings, environments and auth profiles — this is what
 
 Notes:
 - XML mirrors the same structure 1:1 (Jackson-mapped) — use it for backup/restore.
-- Excel uses 3 config tabs + one `TC - <Group>` sheet per group, 31 columns:
+- Excel uses 3 config tabs + one `TC - <Group>` sheet per group, 32 columns:
   GREEN definition (incl. **Test Case ID**, **Phase**, **Extract Variables**,
-  **Auth Profile**), TEAL comparison override, PURPLE automation, RED results
-  (incl. **Response Time**). Older 28/29/30-column workbooks still import —
+  **Auth Profile**, **Delay (ms)**), TEAL comparison override, PURPLE automation,
+  RED results (incl. **Response Time**). Older 28/29/30/31-column workbooks still import —
   the layout is auto-detected from the header row. The Environments tab has a
   **Variables** column: one `key=value` per line.
 - Living examples: `GET /api/export/template/excel` and `GET /api/export/template/xml`
