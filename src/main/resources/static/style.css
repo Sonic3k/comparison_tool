@@ -278,6 +278,7 @@ td.mono { font-family: 'Consolas', monospace; font-size: 12px; }
 .tc-mini.setup    { background: #fef3c7; color: #92400e; }
 .tc-mini.teardown { background: var(--teal-light); color: var(--teal); }
 .tc-mini.vars     { background: #f3e8ff; color: #7c3aed; }
+.tc-mini.delay    { background: #f3f4f6; color: #4b5563; }
 
 /* ─── Progress visibility fixes ──────────────────────────────── */
 #progressBox { position: sticky; top: 0; z-index: 60; }
