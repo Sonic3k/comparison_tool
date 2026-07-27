@@ -512,7 +512,7 @@ public class ExcelGenerator {
 
     private void writeTestGroupSheet(Workbook wb, TestGroup group, Styles s) {
         Sheet sheet = wb.createSheet("TC - " + group.getName());
-        int totalCols = 29;
+        int totalCols = 32;
 
         // Row 0: group info header
         Row r0 = sheet.createRow(0);
@@ -528,38 +528,38 @@ public class ExcelGenerator {
         sheet.createRow(4);
 
         // Row 5: section banners
-        // GREEN   0-14: REQUEST DEFINITION (incl. Test Case ID at col 1)
-        // TEAL   15-19: COMPARISON OVERRIDES
-        // PURPLE 20-23: AUTOMATION ASSERTIONS
-        // RED    24-28: EXECUTION RESULTS
+        // GREEN   0-16: REQUEST DEFINITION (incl. Test Case ID, Auth Profile, Delay (ms))
+        // TEAL   17-21: COMPARISON OVERRIDES
+        // PURPLE 22-25: AUTOMATION ASSERTIONS
+        // RED    26-31: EXECUTION RESULTS
         Row r5 = sheet.createRow(5);
         setCellStyled(r5, 0,  "TEST CASE DEFINITION",   s.tcHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 0, 14));
-        setCellStyled(r5, 15, "COMPARISON OVERRIDES",   s.cmpHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 15, 19));
-        setCellStyled(r5, 20, "AUTOMATION ASSERTIONS",  s.autoHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 20, 23));
-        setCellStyled(r5, 24, "EXECUTION RESULTS",      s.resultHeader);
-        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 24, totalCols - 1));
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 0, 16));
+        setCellStyled(r5, 17, "COMPARISON OVERRIDES",   s.cmpHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 17, 21));
+        setCellStyled(r5, 22, "AUTOMATION ASSERTIONS",  s.autoHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 22, 25));
+        setCellStyled(r5, 26, "EXECUTION RESULTS",      s.resultHeader);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(5, 5, 26, totalCols - 1));
 
-        // Row 6: column headers (29 cols)
+        // Row 6: column headers (32 cols)
         String[] headers = {
-            // GREEN 0-14
+            // GREEN 0-16
             "ID", "Test Case ID", "Name", "Description", "Enabled", "Verification Mode", "Phase",
             "Method", "Endpoint", "Query Params", "Form Params", "JSON Body",
-            "Headers", "Author", "Extract Variables", "Auth Profile",
-            // TEAL 16-20
+            "Headers", "Author", "Extract Variables", "Auth Profile", "Delay (ms)",
+            // TEAL 17-21
             "Ignore Fields", "Ignore Array Order", "Compare Error Responses",
             "Numeric Tolerance", "Case Sensitive",
-            // PURPLE 21-24
+            // PURPLE 22-25
             "Expected Status", "Expected Body (Assertions)", "Expected Headers", "Max Response Time (ms)",
-            // RED 25-30
+            // RED 26-31
             "Overall Status", "Mode Run", "Comparison Result", "Assertion Result", "Executed At",
             "Response Time (ms)"
         };
         Row r6 = sheet.createRow(6);
         for (int i = 0; i < headers.length; i++) {
-            CellStyle cs = i <= 15 ? s.tcHeader : (i <= 20 ? s.cmpHeader : (i <= 24 ? s.autoHeader : s.resultHeader));
+            CellStyle cs = i <= 16 ? s.tcHeader : (i <= 21 ? s.cmpHeader : (i <= 25 ? s.autoHeader : s.resultHeader));
             setCellStyled(r6, i, headers[i], cs);
         }
 
@@ -585,38 +585,39 @@ public class ExcelGenerator {
             row.createCell(13).setCellValue(nvl(tc.getAuthor()));
             row.createCell(14).setCellValue(nvl(tc.getExtractVariables()));
             row.createCell(15).setCellValue(nvl(tc.getAuthProfile()));
+            row.createCell(16).setCellValue(tc.getDelayMs() > 0 ? String.valueOf(tc.getDelayMs()) : "");
 
-            // TEAL 16-20
+            // TEAL 17-21
             ComparisonConfig cmp = tc.getComparisonConfig();
-            row.createCell(16).setCellValue(cmp != null ? nvl(cmp.getIgnoreFieldsRaw()) : "");
-            row.createCell(17).setCellValue(cmp != null ? String.valueOf(cmp.isIgnoreArrayOrder()) : "");
-            row.createCell(18).setCellValue(cmp != null ? String.valueOf(cmp.isCompareErrorResponses()).toUpperCase() : "");
-            row.createCell(19).setCellValue(cmp != null ? String.valueOf(cmp.getNumericTolerance()) : "");
-            row.createCell(20).setCellValue(cmp != null ? String.valueOf(cmp.isCaseSensitive()) : "");
+            row.createCell(17).setCellValue(cmp != null ? nvl(cmp.getIgnoreFieldsRaw()) : "");
+            row.createCell(18).setCellValue(cmp != null ? String.valueOf(cmp.isIgnoreArrayOrder()) : "");
+            row.createCell(19).setCellValue(cmp != null ? String.valueOf(cmp.isCompareErrorResponses()).toUpperCase() : "");
+            row.createCell(20).setCellValue(cmp != null ? String.valueOf(cmp.getNumericTolerance()) : "");
+            row.createCell(21).setCellValue(cmp != null ? String.valueOf(cmp.isCaseSensitive()) : "");
 
-            // PURPLE 21-24
+            // PURPLE 22-25
             AutomationConfig auto = tc.getAutomationConfig();
-            row.createCell(21).setCellValue(auto != null ? nvl(auto.getExpectedStatus()) : "");
-            row.createCell(22).setCellValue(auto != null ? nvl(auto.getExpectedBody()) : "");
-            row.createCell(23).setCellValue(auto != null ? nvl(auto.getExpectedHeaders()) : "");
-            row.createCell(24).setCellValue(auto != null && auto.getMaxResponseTime() > 0 ? String.valueOf(auto.getMaxResponseTime()) : "");
+            row.createCell(22).setCellValue(auto != null ? nvl(auto.getExpectedStatus()) : "");
+            row.createCell(23).setCellValue(auto != null ? nvl(auto.getExpectedBody()) : "");
+            row.createCell(24).setCellValue(auto != null ? nvl(auto.getExpectedHeaders()) : "");
+            row.createCell(25).setCellValue(auto != null && auto.getMaxResponseTime() > 0 ? String.valueOf(auto.getMaxResponseTime()) : "");
 
-            // RED 25-30
+            // RED 26-31
             TestResult res = tc.getResult();
-            row.createCell(25).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "");
-            row.createCell(26).setCellValue(res != null ? nvl(res.getModeRun()) : "");
-            row.createCell(27).setCellValue(res != null ? nvl(res.getComparisonResult()) : "");
-            row.createCell(28).setCellValue(res != null ? nvl(res.getAssertionResult()) : "");
-            row.createCell(29).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
-            row.createCell(30).setCellValue(res != null ? formatResponseTimes(res) : "");
+            row.createCell(26).setCellValue(res != null && res.getStatus() != null ? res.getStatus().name().toLowerCase() : "");
+            row.createCell(27).setCellValue(res != null ? nvl(res.getModeRun()) : "");
+            row.createCell(28).setCellValue(res != null ? nvl(res.getComparisonResult()) : "");
+            row.createCell(29).setCellValue(res != null ? nvl(res.getAssertionResult()) : "");
+            row.createCell(30).setCellValue(res != null ? nvl(res.getExecutedAt()) : "");
+            row.createCell(31).setCellValue(res != null ? formatResponseTimes(res) : "");
         }
 
-        // Column widths (30 cols)
+        // Column widths (32 cols)
         int[] widths = {
-            9, 14, 22, 36, 8, 13, 9, 8, 28, 22, 18, 30, 18, 20, 28, 18,   // GREEN 0-15
-            16, 15, 16, 13, 12,                                            // TEAL 16-20
-            13, 36, 20, 14,                                                 // PURPLE 21-24
-            12, 13, 36, 36, 18, 16                                          // RED 25-30
+            9, 14, 22, 36, 8, 13, 9, 8, 28, 22, 18, 30, 18, 20, 28, 18, 11,   // GREEN 0-16
+            16, 15, 16, 13, 12,                                                 // TEAL 17-21
+            13, 36, 20, 14,                                                      // PURPLE 22-25
+            12, 13, 36, 36, 18, 16                                               // RED 26-31
         };
         for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
     }
