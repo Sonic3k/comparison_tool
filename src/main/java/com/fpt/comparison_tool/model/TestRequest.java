@@ -60,6 +60,9 @@ public class TestRequest {
     /** Optional auth override; blank/null = use the environment's profile. */
     private String authProfile;
 
+    /** Delay in ms applied before this request fires (async data flows). 0 = no delay; never null. */
+    private int delayMs;
+
     /**
      * Variable extraction DSL from response body.
      * Format: "varName=$.jsonPath, varName2=$.other.path"
@@ -170,6 +173,9 @@ public class TestRequest {
 
     public String getAuthProfile() { return authProfile; }
     public void setAuthProfile(String authProfile) { this.authProfile = authProfile; }
+
+    public int getDelayMs() { return delayMs; }
+    public void setDelayMs(int delayMs) { this.delayMs = Math.max(0, delayMs); }
 
     public String getAuthor() { return author; }
     public void setAuthor(String author) { this.author = author; }
