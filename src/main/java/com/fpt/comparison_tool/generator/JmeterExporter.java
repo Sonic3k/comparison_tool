@@ -365,9 +365,21 @@ public class JmeterExporter {
         buildBody(x, tc);
         x.close("HTTPSamplerProxy");
         x.open("hashTree");
+        buildConstantTimer(x, tc);
         buildPerRequestHeaders(x, tc, contentTypeFor(tc, envCt), overrideAuthHeader(tc, profiles));
         buildJsonExtractor(x, tc);
         x.close("hashTree");
+    }
+
+    /** Constant Timer child — JMeter runs scoped timers before the parent sampler fires. */
+    private void buildConstantTimer(Xml x, TestRequest tc) {
+        if (tc.getDelayMs() <= 0) return;
+        x.open("ConstantTimer", "guiclass", "ConstantTimerGui",
+               "testclass", "ConstantTimer", "testname", "Wait " + tc.getDelayMs() + " ms",
+               "enabled", "true");
+        x.prop("stringProp", "ConstantTimer.delay", String.valueOf(tc.getDelayMs()));
+        x.close("ConstantTimer");
+        x.open("hashTree"); x.close("hashTree");
     }
 
     /**
