@@ -511,7 +511,7 @@ public class ExcelGenerator {
     // ─── TC Sheet ─────────────────────────────────────────────────────────────
 
     private void writeTestGroupSheet(Workbook wb, TestGroup group, Styles s) {
-        Sheet sheet = wb.createSheet("TC - " + group.getName());
+        Sheet sheet = wb.createSheet(safeSheetName(wb, "TC - " + group.getName()));
         int totalCols = 32;
 
         // Row 0: group info header
@@ -648,6 +648,31 @@ public class ExcelGenerator {
     }
 
     private String nvl(String s) { return s != null ? s : ""; }
+
+    /**
+     * Excel forbids [ ] : * ? / \ in sheet names and caps them at 31 chars.
+     * POI truncates to 31 first and then validates, so a long group name with a
+     * bracket fails with a confusing already-truncated name in the message.
+     *
+     * The real group name is never lost: it stays in the GROUP INFO block
+     * (row 0 header, row 1 "Group Name"), which is what ExcelImportService reads
+     * back. The sheet name only has to keep the "TC - " prefix and be unique.
+     */
+    private String safeSheetName(Workbook wb, String raw) {
+        String s = nvl(raw).replaceAll("[\\[\\]:*?/\\\\]", "-");
+        if (s.length() > 31) s = s.substring(0, 31);
+        if (s.isEmpty()) s = "TC - Group";
+        if (wb.getSheet(s) == null) return s;          // getSheet is case-insensitive, like Excel
+        for (int i = 2; i < 1000; i++) {
+            String suffix = "~" + i;
+            String base = s.length() + suffix.length() > 31
+                        ? s.substring(0, 31 - suffix.length())
+                        : s;
+            String candidate = base + suffix;
+            if (wb.getSheet(candidate) == null) return candidate;
+        }
+        throw new IllegalStateException("Cannot derive a unique sheet name for: " + raw);
+    }
 
     // ─── Styles ───────────────────────────────────────────────────────────────
 
