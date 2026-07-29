@@ -65,23 +65,53 @@ function disabledNote(s) {
 
 function filterGroups() { renderGroupGrid(suite?.testGroups || []); }
 
+// Execution bands: setup groups always run before everything and teardown
+// groups after everything, whichever slot they occupy in the list. The grid is
+// rendered in that order and drags are clamped to a band, so what you see is
+// the order that actually runs.
+const BAND_LABEL = ['Global Setup — runs first', 'Test groups', 'Global Teardown — runs last'];
+
+function bandOf(name) {
+  if ((name || '').startsWith('Global Setup'))    return 0;
+  if ((name || '').startsWith('Global Teardown')) return 2;
+  return 1;
+}
+
 function renderGroupGrid(groups) {
   const q = (document.getElementById('groupSearch')?.value || '').toLowerCase();
   const list = q
     ? groups.filter(g => g.name.toLowerCase().includes(q) || (g.description || '').toLowerCase().includes(q))
     : groups;
 
+  const ordered = list
+    .map((g, i) => [g, i])
+    .sort((a, b) => bandOf(a[0].name) - bandOf(b[0].name) || a[1] - b[1])
+    .map(x => x[0]);
+
+  // Reordering needs the complete list on screen — a filtered grid would send
+  // back a partial order.
+  const canReorder = !q && ordered.length > 1;
+  const multiBand  = new Set(ordered.map(g => bandOf(g.name))).size > 1;
+  let lastBand = -1;
+
   document.getElementById('groupGrid').innerHTML =
-    list.map(grp => {
+    ordered.map(grp => {
       const st = gStats(grp), pend = st.total - st.passed - st.failed;
       const disabled = grp.enabled === false;
-      return `<div class="group-card${disabled ? ' group-card-disabled' : ''}" onclick="openGroupDetail('${esc(grp.name)}')">
+      const band = bandOf(grp.name);
+      let divider = '';
+      if (multiBand && band !== lastBand) {
+        lastBand = band;
+        divider = `<div class="band-divider">${BAND_LABEL[band]}</div>`;
+      }
+      return divider + `<div class="group-card${disabled ? ' group-card-disabled' : ''}" data-group-name="${esc(grp.name)}" onclick="openGroupDetail('${esc(grp.name)}')">
         <div class="group-card-header">
           <div>
             <div class="group-card-name" title="${esc(grp.name)}">${esc(grp.name)}${disabled ? ' <span style="font-size:11px;color:#9ca3af;font-weight:400">(disabled)</span>' : ''}</div>
             <div class="group-card-owner">${st.reqs} requests${grp.owner ? ' · ' + esc(grp.owner) : ''}</div>
           </div>
           <div onclick="event.stopPropagation()" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+            ${canReorder ? '<span class="drag-handle" data-drag-handle title="Drag to reorder">⠿</span>' : ''}
             <button class="btn btn-teal btn-xs" onclick="runGroup('${esc(grp.name)}')">▶</button>
             <button class="btn btn-outline btn-xs" onclick="exportGroupXml('${esc(grp.name)}')" title="Export XML">⬇</button>
             <button class="switch${disabled ? '' : ' on'}"
@@ -104,6 +134,7 @@ function renderGroupGrid(groups) {
       <div style="font-size:13px;font-weight:500">Add Test Group</div>
     </div>`;
 
+  initGroupGridSortable();
   renderSuiteSummary(suite?.testGroups || []);
 }
 
@@ -313,8 +344,11 @@ function renderDetailCases(grp) {
       const def  = defs.get(c.tcId);
       const roll = tcRollupStatus(enabledReqs);
       html += `
-        <tr class="tc-head-row" onclick="toggleTcGroup('${key}')">
-          <td style="text-align:center;color:#93c5fd;font-size:10px" id="tcarr-${key}">▼</td>
+        <tr class="tc-head-row" data-tc-key="${key}" onclick="toggleTcGroup('${key}')">
+          <td class="cell-drag">
+            <span class="drag-handle" data-drag-handle title="Drag to reorder this test case" onclick="event.stopPropagation()">⠿</span>
+            <span class="tc-arrow" id="tcarr-${key}">▼</span>
+          </td>
           <td colspan="4">
             <span class="mono" style="font-weight:700;color:var(--blue)">${esc(c.tcId)}</span>
             ${def && def.name && def.name !== c.tcId ? `<span style="color:#6b7280;font-size:12px;margin-left:8px">${esc(def.name)}</span>` : ''}
@@ -336,6 +370,14 @@ function renderDetailCases(grp) {
   document.getElementById('detailCasesTable').innerHTML =
     html ||
     '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px">No test cases yet. Click "+ Add Case".</td></tr>';
+
+  _allCollapsed = false;
+  const btn = document.getElementById('btnCollapseAll');
+  if (btn) {
+    btn.textContent = '⊟ Collapse all';
+    btn.style.display = Object.keys(_tcMembers).length ? '' : 'none';
+  }
+  initDetailSortable();
 }
 
 function caseRowHtml(grp, tc, groupKey) {
@@ -345,8 +387,13 @@ function caseRowHtml(grp, tc, groupKey) {
   const memberCls = groupKey ? ` tc-member tcm-${groupKey}` : '';
   const open = `openCaseDrawer('${esc(grp.name)}','${esc(tc.id)}')`;
   return `
-        <tr class="case-row${disabled ? ' case-disabled' : ''}${memberCls}" id="row-${esc(tc.id)}">
-          <td style="text-align:center;color:#93c5fd;font-size:11px">${groupKey ? '└' : ''}</td>
+        <tr class="case-row${disabled ? ' case-disabled' : ''}${memberCls}" id="row-${esc(tc.id)}"
+            data-req-id="${esc(tc.id)}" data-tc-key="${groupKey || ''}">
+          <td class="cell-drag">
+            <span class="drag-handle" data-drag-handle
+              title="${groupKey ? 'Drag to reorder inside this test case' : 'Drag to reorder this test case'}">⠿</span>
+            ${groupKey ? '<span class="tc-arrow">└</span>' : ''}
+          </td>
           <td class="mono cell-id" style="font-weight:600;cursor:pointer" title="${esc(tc.id)}" onclick="${open}">${esc(tc.id)}</td>
           <td style="cursor:pointer" onclick="${open}">${esc(tc.name)}${caseBadges(tc, !!groupKey)}</td>
           <td><span class="bs s-method">${tc.method || ''}</span></td>
@@ -375,6 +422,138 @@ function toggleTcGroup(key) {
   rows.forEach(r => { r.style.display = collapse ? 'none' : ''; });
   const arr = document.getElementById('tcarr-' + key);
   if (arr) arr.textContent = collapse ? '▶' : '▼';
+}
+
+let _allCollapsed = false;
+
+/** Collapsing turns a 146-row table into one row per test case — the only sane
+ *  way to drag a test case across a big group. */
+function toggleCollapseAll() {
+  _allCollapsed = !_allCollapsed;
+  document.querySelectorAll('#detailCasesTable tr.tc-member')
+    .forEach(r => { r.style.display = _allCollapsed ? 'none' : ''; });
+  document.querySelectorAll('#detailCasesTable .tc-arrow[id^="tcarr-"]')
+    .forEach(a => { a.textContent = _allCollapsed ? '▶' : '▼'; });
+  const btn = document.getElementById('btnCollapseAll');
+  if (btn) btn.textContent = _allCollapsed ? '⊞ Expand all' : '⊟ Collapse all';
+}
+
+// ─── Reordering ───────────────────────────────────────────────────────────────
+// Group order, test case order and request-inside-a-test-case order are all the
+// same thing underneath: the position of a TestRequest in the group's single
+// flat list (and of a group in the suite's list). Every drop therefore sends one
+// full permutation and the server validates nothing was added or lost.
+
+let _gridSortableReady   = false;
+let _detailSortableReady = false;
+let _orderSaveTimer      = null;
+
+function initGroupGridSortable() {
+  if (_gridSortableReady) return;   // the container survives innerHTML swaps
+  const grid = document.getElementById('groupGrid');
+  if (!grid) return;
+  _gridSortableReady = true;
+
+  makeSortable(grid, {
+    axis: 'xy',
+    unitOf(h) {
+      const card = h.closest('.group-card');
+      return card ? { els: [card], scope: 'band' + bandOf(card.dataset.groupName) } : null;
+    },
+    unitsInScope(scope) {
+      return [...grid.querySelectorAll('.group-card')]
+        .filter(c => 'band' + bandOf(c.dataset.groupName) === scope)
+        .map(c => ({ els: [c] }));
+    },
+    onDrop: persistGroupOrder
+  });
+}
+
+function initDetailSortable() {
+  if (_detailSortableReady) return;
+  const tbody = document.getElementById('detailCasesTable');
+  if (!tbody) return;
+  _detailSortableReady = true;
+
+  const membersOf = key => [...tbody.querySelectorAll('tr.tcm-' + key)];
+
+  makeSortable(tbody, {
+    axis: 'y',
+    unitOf(h) {
+      const row = h.closest('tr');
+      if (!row) return null;
+      // Whole test case — header row drags its members along.
+      if (row.classList.contains('tc-head-row')) {
+        return { scope: 'tc', els: [row, ...membersOf(row.dataset.tcKey)] };
+      }
+      // A member is clamped to its own test case: dragging it out would silently
+      // change which test case it belongs to. Use Assign for that.
+      if (row.classList.contains('tc-member')) {
+        return { scope: 'm:' + row.dataset.tcKey, els: [row] };
+      }
+      return { scope: 'tc', els: [row] };   // single-request test case
+    },
+    unitsInScope(scope) {
+      if (scope.startsWith('m:')) return membersOf(scope.slice(2)).map(r => ({ els: [r] }));
+      const units = [];
+      for (const row of tbody.children) {
+        if (row.classList.contains('tc-member')) continue;
+        if (row.classList.contains('tc-head-row')) units.push({ els: [row, ...membersOf(row.dataset.tcKey)] });
+        else if (row.classList.contains('case-row')) units.push({ els: [row] });
+      }
+      return units;
+    },
+    onDrop: persistRequestOrder
+  });
+}
+
+function persistGroupOrder() {
+  const names = [...document.querySelectorAll('#groupGrid .group-card')].map(c => c.dataset.groupName);
+  const prev  = suite?.testGroups || [];
+  const next  = names.map(n => prev.find(g => g.name === n)).filter(Boolean);
+  if (next.length !== prev.length) { renderGroupGrid(prev); return; }
+
+  suite.testGroups = next;
+  renderSuiteSummary(next);
+  queueOrderSave('/groups/reorder', { names });
+}
+
+function persistRequestOrder() {
+  const grp = suite?.testGroups?.find(g => g.name === currentGroup);
+  if (!grp) return;
+
+  const ids  = [...document.querySelectorAll('#detailCasesTable tr.case-row')].map(r => r.dataset.reqId);
+  const prev = grp.testRequests || [];
+  const next = ids.map(id => prev.find(r => r.id === id)).filter(Boolean);
+  if (next.length !== prev.length) { renderDetailCases(grp); return; }
+
+  grp.testRequests = next;
+  queueOrderSave(`/groups/${encodeURIComponent(grp.name)}/cases/reorder`, { requestIds: ids });
+}
+
+/** Debounced so a burst of drags costs one call; the last closure wins and it
+ *  always carries the latest order. */
+function queueOrderSave(path, body) {
+  clearTimeout(_orderSaveTimer);
+  _orderSaveTimer = setTimeout(async () => {
+    try {
+      const res = await api('PUT', path, body);
+      if (!res.success) throw new Error(res.message || 'Reorder rejected');
+      toast('Order saved');
+    } catch (err) {
+      toast((err.message || 'Could not save the new order') + ' — reloading', true);
+      await reloadSuiteState();
+    }
+  }, 350);
+}
+
+async function reloadSuiteState() {
+  const res = await api('GET', '/suite');
+  if (!res.success || !res.data) return;
+  suite = res.data;
+  renderGroupGrid(suite.testGroups);
+  const grp = suite.testGroups.find(g => g.name === currentGroup);
+  if (grp) { renderDetailStats(grp); renderDetailCases(grp); }
 }
 
 
