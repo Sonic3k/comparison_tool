@@ -17,7 +17,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -39,6 +41,42 @@ public class GroupController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<TestGroup>>> listGroups() {
         return ResponseEntity.ok(ApiResponse.ok(session.getTestSuite().getTestGroups()));
+    }
+
+    /**
+     * PUT /api/groups/reorder
+     * Body: { "names": ["Group A", "Group B", ...] }
+     *
+     * Pure permutation of suite.testGroups. The list order IS the order used by
+     * execution, Excel sheets, XML and every export — there is no separate
+     * order field to keep in sync.
+     */
+    @PutMapping("/reorder")
+    public ResponseEntity<ApiResponse<List<TestGroup>>> reorderGroups(
+            @RequestBody Map<String, List<String>> body) {
+        requireSuite();
+        List<String> names = body != null ? body.get("names") : null;
+        if (names == null || names.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("names is required"));
+        }
+
+        List<TestGroup> current = session.getTestSuite().getTestGroups();
+        if (names.size() != current.size() || new HashSet<>(names).size() != names.size()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("names must be a permutation of the existing groups"));
+        }
+
+        List<TestGroup> reordered = new ArrayList<>(current.size());
+        for (String n : names) {
+            TestGroup g = findGroup(n);
+            if (g == null) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Group '" + n + "' not found"));
+            }
+            reordered.add(g);
+        }
+
+        session.getTestSuite().setTestGroups(reordered);
+        return ResponseEntity.ok(ApiResponse.ok("Group order updated", reordered));
     }
 
     @PostMapping
