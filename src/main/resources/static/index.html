@@ -203,6 +203,7 @@
           <div class="search-wrap">
             <span class="search-icon">🔍</span>
             <input id="groupSearch" placeholder="Search groups..." style="width:180px" oninput="filterGroups()"/>
+            <button class="btn btn-outline btn-sm" onclick="openGroupReorder()" title="Change the order test groups run in">⇅ Reorder</button>
           </div>
           <button class="btn btn-primary btn-sm" onclick="openImportGroupModal()">+ Add Group</button>
         </div>
@@ -232,7 +233,10 @@
         </div>
       </div>
 
-      <div class="group-grid" id="groupGrid"></div>
+      <div id="groupGridWrap">
+        <div class="group-grid" id="groupGrid"></div>
+      </div>
+      <div class="ro-panel" id="groupReorder" style="display:none"></div>
     </div>
 
     <!-- Results -->
@@ -294,7 +298,7 @@
           <button class="btn btn-teal btn-sm"    id="btnRunGroup">▶ Run Group</button>
           <button class="btn btn-amber-outline btn-sm" id="btnRunFailedGroup" style="display:none">↻ Re-run failed</button>
           <button class="btn btn-outline btn-sm" id="btnRunTeardownGroup" style="display:none" title="Run this group's teardown/cleanup only — no tests executed">🧹 Teardown</button>
-          <button class="btn btn-outline btn-sm" id="btnCollapseAll" onclick="toggleCollapseAll()" title="Collapse every test case to a single row — easier to drag them around">⊟ Collapse all</button>
+          <button class="btn btn-outline btn-sm" id="detailReorderBtn" onclick="openCaseReorder()" title="Change the order test cases and their requests run in">⇅ Reorder</button>
           <button class="btn btn-outline btn-sm" id="btnAddCase">+ Add Case</button>
           <div class="export-wrap" style="position:relative">
             <button class="btn btn-outline btn-sm" onclick="toggleGroupExportMenu()">⬇ Export ▾</button>
@@ -309,10 +313,11 @@
         </div>
       </div>
       <div id="detailStats"></div>
+      <div class="ro-panel" id="caseReorder" style="display:none"></div>
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th style="width:46px"></th>
+            <th style="width:28px"></th>
             <th>ID</th><th>Name</th><th>Method</th><th>Endpoint</th>
             <th>Mode</th><th>Status</th><th>Target</th><th style="width:150px"></th>
           </tr></thead>
@@ -697,7 +702,7 @@
 
 <script src="js/core.js"></script>
 <script src="js/config.js"></script>
-<script src="js/sortable.js"></script>
+<script src="js/reorder.js"></script>
 <script src="js/groups.js"></script>
 
 </body>
