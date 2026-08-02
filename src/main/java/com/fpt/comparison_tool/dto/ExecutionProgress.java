@@ -58,6 +58,14 @@ public class ExecutionProgress {
 
     private static final int RECENT_LIMIT = 100;
 
+    /** Optional per-request completion hook — used by the CI CLI for live log
+     *  lines. No getter on purpose: never serialized to the frontend. */
+    private volatile java.util.function.BiConsumer<String, TestRequest> listener;
+
+    public void setListener(java.util.function.BiConsumer<String, TestRequest> listener) {
+        this.listener = listener;
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     public void start(int totalCases) {
@@ -155,6 +163,9 @@ public class ExecutionProgress {
         recent.addLast(new RecentEntry(groupName, r.getId(), r.getTestCaseId(),
                 status.name().toLowerCase(), System.currentTimeMillis()));
         while (recent.size() > RECENT_LIMIT) recent.pollFirst();
+        if (listener != null) {
+            try { listener.accept(groupName, r); } catch (Exception ignored) { }
+        }
     }
 
     // ── Getters (serialized to the frontend) ──────────────────────────────────
