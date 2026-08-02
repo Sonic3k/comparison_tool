@@ -55,6 +55,35 @@ public class ExecutionService {
     }
 
     public void startAsync(TestSuite suite, ExecutionStartRequest request, ExecutionProgress progress) {
+        ResolvedScope scope = prepare(suite, request, progress);
+        if (scope == null) return;   // prepare() already aborted progress with the reason
+
+        CompletableFuture.runAsync(() -> runResolved(suite, scope, progress), orchestrator)
+                .exceptionally(ex -> {
+                    // Reached only if the executor refuses the task — make sure flag is cleared
+                    progress.abort("Executor rejected: " + ex.getMessage());
+                    return null;
+                });
+    }
+
+    /**
+     * Synchronous run — blocks the calling thread until the whole suite
+     * finishes. Used by the CI entrypoints (REST /api/ci/run and the ci-run
+     * CLI); bypasses the orchestrator thread so a CI run never queues behind
+     * a UI run. Same semantics as startAsync otherwise.
+     */
+    public void runSync(TestSuite suite, ExecutionStartRequest request, ExecutionProgress progress) {
+        ResolvedScope scope = prepare(suite, request, progress);
+        if (scope == null) return;
+        runResolved(suite, scope, progress);
+    }
+
+    /**
+     * Shared pre-flight: normalize, resolve scope, plan keys, start progress.
+     * Returns null (after progress.abort with the reason) when there is
+     * nothing to run or setup fails.
+     */
+    private ResolvedScope prepare(TestSuite suite, ExecutionStartRequest request, ExecutionProgress progress) {
         ResolvedScope scope;
         List<String> plannedKeys;
         try {
@@ -62,7 +91,7 @@ public class ExecutionService {
             scope = resolveScope(suite, request);
             if (scope.emptyReason() != null) {
                 progress.abort(scope.emptyReason());
-                return;
+                return null;
             }
 
             VerificationMode suiteFilter = suite.getSettings().getExecutionConfig().getVerificationMode();
@@ -74,71 +103,68 @@ public class ExecutionService {
             }
             if (plannedKeys.isEmpty()) {
                 progress.abort("Nothing to run for the requested scope");
-                return;
+                return null;
             }
         } catch (Exception e) {
             // Setup failed before we even started — make sure flag is clean
             progress.abort("Setup error: " + e.getMessage());
-            return;
+            return null;
         }
 
         progress.start(plannedKeys.size(), plannedKeys);
+        return scope;
+    }
 
-        final ResolvedScope fScope = scope;
-        CompletableFuture.runAsync(() -> {
-            try {
-                ExecutionConfig ec = suite.getSettings().getExecutionConfig();
-                ExecutionMode mode = ec.getMode();
-                VerificationMode filter = ec.getVerificationMode();
+    /** The full orchestration of one run: Global Setup → normal groups → Global Teardown. */
+    private void runResolved(TestSuite suite, ResolvedScope fScope, ExecutionProgress progress) {
+        try {
+            ExecutionConfig ec = suite.getSettings().getExecutionConfig();
+            ExecutionMode mode = ec.getMode();
+            VerificationMode filter = ec.getVerificationMode();
 
-                Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
-                Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
+            Environment sourceEnv = suite.findEnvironment(ec.getSourceEnvironment());
+            Environment targetEnv = suite.findEnvironment(ec.getTargetEnvironment());
 
-                // Suite-scope variables (populated by Global Setup groups)
-                Map<String, String> suiteVars = new ConcurrentHashMap<>();
+            // Suite-scope variables (populated by Global Setup groups)
+            Map<String, String> suiteVars = new ConcurrentHashMap<>();
 
-                // Separate groups: global setup → normal → global teardown
-                List<TestGroup> setupGroups    = new ArrayList<>();
-                List<TestGroup> normalGroups   = new ArrayList<>();
-                List<TestGroup> teardownGroups = new ArrayList<>();
+            // Separate groups: global setup → normal → global teardown
+            List<TestGroup> setupGroups    = new ArrayList<>();
+            List<TestGroup> normalGroups   = new ArrayList<>();
+            List<TestGroup> teardownGroups = new ArrayList<>();
 
-                for (TestGroup g : fScope.groups()) {
-                    if (g.getName().startsWith(GLOBAL_SETUP_PREFIX))         setupGroups.add(g);
-                    else if (g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) teardownGroups.add(g);
-                    else                                                     normalGroups.add(g);
-                }
-
-                // 1. Global Setup groups — sequential, variables go to suiteVars
-                for (TestGroup g : setupGroups) {
-                    if (progress.isStopRequested()) break;
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
-                }
-
-                // 2. Normal groups — each gets its own groupVars (initialized with suiteVars)
-                if (!progress.isStopRequested()) {
-                    for (TestGroup g : normalGroups) {
-                        if (progress.isStopRequested()) break;
-                        Map<String, String> groupVars = new ConcurrentHashMap<>(suiteVars);
-                        executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, groupVars,
-                                fScope.filterFor(g), fScope.runSetupTeardown(g), fScope.teardownOnlyFor(g));
-                    }
-                }
-
-                // 3. Global Teardown groups — sequential, ALWAYS run (even after stop)
-                for (TestGroup g : teardownGroups) {
-                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
-                }
-
-            } catch (Exception e) {
-                progress.abort("Unexpected error: " + e.getMessage());
-            } finally {
-                if (progress.isRunning()) progress.finish();
+            for (TestGroup g : fScope.groups()) {
+                if (g.getName().startsWith(GLOBAL_SETUP_PREFIX))         setupGroups.add(g);
+                else if (g.getName().startsWith(GLOBAL_TEARDOWN_PREFIX)) teardownGroups.add(g);
+                else                                                     normalGroups.add(g);
             }
-        }, orchestrator).exceptionally(ex -> {
-            // Reached only if the executor refuses the task — make sure flag is cleared
-            progress.abort("Executor rejected: " + ex.getMessage());
-            return null;
-        });
+
+            // 1. Global Setup groups — sequential, variables go to suiteVars
+            for (TestGroup g : setupGroups) {
+                if (progress.isStopRequested()) break;
+                executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
+            }
+
+            // 2. Normal groups — each gets its own groupVars (initialized with suiteVars)
+            if (!progress.isStopRequested()) {
+                for (TestGroup g : normalGroups) {
+                    if (progress.isStopRequested()) break;
+                    Map<String, String> groupVars = new ConcurrentHashMap<>(suiteVars);
+                    executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, groupVars,
+                            fScope.filterFor(g), fScope.runSetupTeardown(g), fScope.teardownOnlyFor(g));
+                }
+            }
+
+            // 3. Global Teardown groups — sequential, ALWAYS run (even after stop)
+            for (TestGroup g : teardownGroups) {
+                executeGroup(g, suite, mode, filter, sourceEnv, targetEnv, progress, suiteVars, null, true, false);
+            }
+
+        } catch (Exception e) {
+            progress.abort("Unexpected error: " + e.getMessage());
+        } finally {
+            if (progress.isRunning()) progress.finish();
+        }
     }
 
     // ── Scope resolution ──────────────────────────────────────────────────────
