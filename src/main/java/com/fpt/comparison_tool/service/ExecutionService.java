@@ -161,7 +161,11 @@ public class ExecutionService {
             }
 
         } catch (Exception e) {
-            progress.abort("Unexpected error: " + e.getMessage());
+            // Failures raised inside a parallel chunk arrive wrapped; report the cause.
+            Throwable root = (e instanceof java.util.concurrent.CompletionException && e.getCause() != null)
+                    ? e.getCause() : e;
+            String label = (root instanceof AuthTokenException) ? "Authentication error: " : "Unexpected error: ";
+            progress.abort(label + root.getMessage());
         } finally {
             if (progress.isRunning()) progress.finish();
         }
@@ -488,6 +492,12 @@ public class ExecutionService {
                 extractVariables(responseBody, tc.getExtractVariables(), variables, suite);
             }
 
+        } catch (AuthTokenException e) {
+            // A token problem is a configuration problem: it would hit every
+            // remaining request identically. Abort the run instead of recording
+            // thousands of identical errors and re-calling the identity
+            // provider once per test case.
+            throw e;
         } catch (Exception e) {
             String reason = errorReason(e);
             TestResult r = new TestResult();

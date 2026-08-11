@@ -481,9 +481,12 @@ public class ExcelGenerator {
     private void writeAuthProfilesSheet(Workbook wb, TestSuite suite, Styles s) {
         Sheet sheet = wb.createSheet("Auth Profiles");
 
+        // New columns are appended, never inserted: older workbooks stay importable
+        // and the fixed column indexes used by ExcelImportService keep their meaning.
         String[] cols = { "Profile Name", "Auth Type", "Description", "Token URL",
                 "Username", "Password", "Client ID", "Client Secret",
-                "Scope", "Entity ID", "Token", "Additional Config" };
+                "Scope", "Entity ID", "Token", "Additional Config",
+                "Grant Type", "Refresh Token", "Extra Params" };
         Row hdr = sheet.createRow(0);
         for (int i = 0; i < cols.length; i++) setCellStyled(hdr, i, cols[i], s.header);
 
@@ -502,10 +505,25 @@ public class ExcelGenerator {
             row.createCell(9).setCellValue(nvl(p.getEntityId()));
             row.createCell(10).setCellValue(nvl(p.getToken()));
             row.createCell(11).setCellValue(nvl(p.getAdditionalConfig()));
+            row.createCell(12).setCellValue(nvl(p.getGrantType()));
+            row.createCell(13).setCellValue(nvl(p.getRefreshToken()));
+            row.createCell(14).setCellValue(encodeExtraParams(p));
         }
 
-        int[] widths = {15, 18, 30, 35, 20, 15, 15, 15, 20, 20, 25, 20};
+        int[] widths = {15, 18, 30, 35, 20, 15, 15, 15, 20, 20, 25, 20, 20, 25, 30};
         for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
+    }
+
+    /** Extra token-request params as "key=value; key2=value2" — one cell, same shape as the importer expects. */
+    private String encodeExtraParams(AuthProfile p) {
+        if (p.getExtraParams() == null || p.getExtraParams().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Param param : p.getExtraParams()) {
+            if (param == null || param.getKey() == null || param.getKey().isBlank()) continue;
+            if (sb.length() > 0) sb.append("; ");
+            sb.append(param.getKey().trim()).append('=').append(nvl(param.getValue()));
+        }
+        return sb.toString();
     }
 
     // ─── TC Sheet ─────────────────────────────────────────────────────────────

@@ -149,7 +149,10 @@ function renderAuthProfiles(profiles) {
   document.getElementById('authProfilesTable').innerHTML = profiles.length
     ? profiles.map((p, i) => `<tr>
         <td><strong>${esc(p.name)}</strong></td>
-        <td><span class="bs s-pending">${esc((p.type || p.authType || 'none').toUpperCase())}</span></td>
+        <td><span class="bs s-pending">${esc((p.type || p.authType || 'none').toUpperCase())}</span>${
+          (p.type || p.authType || '').toLowerCase() === 'client_credentials'
+            ? `<span class="bs s-pending" style="margin-left:4px">${esc((p.grantType || 'client_credentials').toUpperCase())}</span>` : ''
+        }</td>
         <td style="color:#6b7280">${esc(p.description || '')}</td>
         <td class="mono" style="color:#6b7280">${esc(p.tokenUrl || '')}</td>
         <td>
@@ -170,10 +173,15 @@ function showAuthModal(idx = -1) {
     sv('ap-username', p.username); sv('ap-password', p.password);
     sv('ap-clientId', p.clientId); sv('ap-clientSecret', p.clientSecret);
     sv('ap-scope', p.scope); sv('ap-token', p.token);
+    sv('ap-grantType', (p.grantType || 'client_credentials').toLowerCase());
+    sv('ap-refreshToken', p.refreshToken);
+    sv('ap-extraParams', encodeExtraParams(p.extraParams));
   } else {
     ['ap-name','ap-desc','ap-tokenUrl','ap-username','ap-password',
-     'ap-clientId','ap-clientSecret','ap-scope','ap-token'].forEach(id => sv(id, ''));
+     'ap-clientId','ap-clientSecret','ap-scope','ap-token',
+     'ap-refreshToken','ap-extraParams'].forEach(id => sv(id, ''));
     sv('ap-type', 'none');
+    sv('ap-grantType', 'client_credentials');
   }
   onAuthTypeChange();
   openModal('authModal');
@@ -191,7 +199,10 @@ async function saveAuthProfile() {
     name: g('ap-name'), type: g('ap-type'), description: g('ap-desc'),
     tokenUrl: g('ap-tokenUrl'), username: g('ap-username'), password: g('ap-password'),
     clientId: g('ap-clientId'), clientSecret: g('ap-clientSecret'),
-    scope: g('ap-scope'), token: g('ap-token')
+    scope: g('ap-scope'), token: g('ap-token'),
+    grantType: g('ap-grantType') || 'client_credentials',
+    refreshToken: g('ap-refreshToken'),
+    extraParams: parseExtraParams(g('ap-extraParams'))
   };
   if (!profile.name) { alert('Profile name required'); return; }
   if (_editAuthIdx >= 0) suite.authProfiles[_editAuthIdx] = profile;
@@ -204,15 +215,43 @@ async function saveAuthProfile() {
   }
 }
 
+// "key=value" per line <-> [{key,value}]
+function encodeExtraParams(list) {
+  if (!Array.isArray(list) || !list.length) return '';
+  return list.filter(p => p && p.key).map(p => `${p.key}=${p.value == null ? '' : p.value}`).join('\n');
+}
+
+function parseExtraParams(text) {
+  if (!text) return [];
+  return text.split(/[\n;]/).map(line => {
+    const t = line.trim();
+    if (!t) return null;
+    const i = t.indexOf('=');
+    if (i <= 0) return null;
+    return { key: t.slice(0, i).trim(), value: t.slice(i + 1).trim() };
+  }).filter(Boolean);
+}
+
 function onAuthTypeChange() {
   const t = (g('ap-type') || '').toLowerCase();
-  vis('ap-tokenUrl-wrap', t === 'basic' || t === 'client_credentials');
-  vis('ap-user-wrap',  t === 'basic');
-  vis('ap-pass-wrap',  t === 'basic');
-  vis('ap-cid-wrap',   t === 'client_credentials');
-  vis('ap-csec-wrap',  t === 'client_credentials');
-  vis('ap-scope-wrap', t === 'client_credentials');
+  const oauth = t === 'client_credentials';
+  // Grant only applies to the OAuth2 type; blank means client_credentials server-side.
+  const grant = oauth ? ((g('ap-grantType') || 'client_credentials').toLowerCase()) : '';
+
+  vis('ap-grant-wrap',   oauth);
+  vis('ap-tokenUrl-wrap', t === 'basic' || oauth);
+  // Username/password serve Basic auth, and the OAuth2 password grant.
+  vis('ap-user-wrap',  t === 'basic' || (oauth && grant === 'password'));
+  vis('ap-pass-wrap',  t === 'basic' || (oauth && grant === 'password'));
+  vis('ap-cid-wrap',   oauth);
+  // Secret is mandatory for client_credentials, optional for the user grants
+  // (public clients omit it), so it stays visible for all OAuth2 grants.
+  vis('ap-csec-wrap',  oauth);
+  vis('ap-scope-wrap', oauth);
+  vis('ap-rt-wrap',    oauth && grant === 'refresh_token');
+  vis('ap-extra-wrap', oauth);
   vis('ap-token-wrap', t === 'bearer');
+  vis('ap-secret-hint', t !== 'none');
 }
 
 

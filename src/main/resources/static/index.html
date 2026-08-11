@@ -431,7 +431,15 @@
         <label>Auth Type</label>
         <select id="ap-type" onchange="onAuthTypeChange()">
           <option value="none">None</option><option value="basic">Basic Auth</option>
-          <option value="bearer">Bearer Token</option><option value="client_credentials">OAuth2 Client Credentials</option>
+          <option value="bearer">Bearer Token</option><option value="client_credentials">OAuth2 (token endpoint)</option>
+        </select>
+      </div>
+      <div class="form-group form-full" id="ap-grant-wrap">
+        <label>OAuth2 Grant Type</label>
+        <select id="ap-grantType" onchange="onAuthTypeChange()">
+          <option value="client_credentials">client_credentials — application token, no user identity</option>
+          <option value="password">password — user token via username/password (IdP must allow it)</option>
+          <option value="refresh_token">refresh_token — user token from a stored refresh token</option>
         </select>
       </div>
       <div class="form-group form-full"><label>Description</label><input id="ap-desc"/></div>
@@ -441,7 +449,16 @@
       <div class="form-group" id="ap-cid-wrap"><label>Client ID</label><input id="ap-clientId"/></div>
       <div class="form-group" id="ap-csec-wrap"><label>Client Secret</label><input id="ap-clientSecret" type="password"/></div>
       <div class="form-group form-full" id="ap-scope-wrap"><label>Scope</label><input id="ap-scope"/></div>
+      <div class="form-group form-full" id="ap-rt-wrap"><label>Refresh Token</label><input id="ap-refreshToken" type="password"/></div>
       <div class="form-group form-full" id="ap-token-wrap"><label>Bearer Token</label><input id="ap-token"/></div>
+      <div class="form-group form-full" id="ap-extra-wrap">
+        <label>Extra Token Parameters</label>
+        <textarea id="ap-extraParams" rows="3" placeholder="One per line: key=value&#10;Appended to the token request body, overriding the defaults."></textarea>
+      </div>
+      <div class="form-group form-full" id="ap-secret-hint" style="color:#6b7280;font-size:12px">
+        Secrets may be written as <code>${ENV_VAR}</code> — the value is read from the environment
+        of the machine running the tool, so the suite file can be committed without credentials.
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('authModal')">Cancel</button>

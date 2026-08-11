@@ -39,7 +39,13 @@
   </environment>
   <authProfiles>
     <authProfile name="Legacy-SAML" description="SAML authentication for legacy environment" tokenUrl="https://sso.company.com/saml/token" username="api-user@company.com" password="********" entityId="legacy-api-entity" type="SAML"/>
-    <authProfile name="Modern-OAuth2" description="OAuth2 for modern environment" tokenUrl="https://auth.company.com/oauth/token" clientId="api-client-v2" clientSecret="********" scope="api:read api:write" type="CLIENT_CREDENTIALS"/>
+    <authProfile name="Modern-OAuth2" description="OAuth2 application token" tokenUrl="https://auth.company.com/oauth/token" clientId="api-client-v2" clientSecret="${API_CLIENT_SECRET}" scope="api:read api:write" grantType="client_credentials" type="CLIENT_CREDENTIALS"/>
+    <authProfile name="Modern-User-Password" description="OAuth2 user token via the password grant; token carries user claims" tokenUrl="https://auth.company.com/oauth/token" clientId="api-client-v2" username="svc-tester@company.com" password="${API_TEST_PASSWORD}" scope="api://api-client-v2/.default" grantType="password" type="CLIENT_CREDENTIALS"/>
+    <authProfile name="Modern-User-Refresh" description="OAuth2 user token from a stored refresh token; no interactive login" tokenUrl="https://auth.company.com/oauth/token" clientId="api-client-v2" refreshToken="${API_REFRESH_TOKEN}" scope="api://api-client-v2/.default" grantType="refresh_token" type="CLIENT_CREDENTIALS">
+      <extraParams>
+        <param key="resource" value="api://api-client-v2"/>
+      </extraParams>
+    </authProfile>
     <authProfile name="Admin-Basic" description="Basic auth for admin operations" username="admin" password="admin123" type="BASIC"/>
     <authProfile name="Public-Bearer" description="Static bearer token for public API" token="public-api-token-12345" type="BEARER"/>
     <authProfile name="Payment-OAuth2" description="OAuth2 for payment service" tokenUrl="https://payment-auth.company.com/oauth/token" clientId="payment-client" clientSecret="payment-secret" scope="payment:process" additionalConfig="{&quot;audience&quot;: &quot;payment-api&quot;}" type="CLIENT_CREDENTIALS"/>

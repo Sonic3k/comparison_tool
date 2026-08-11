@@ -1,0 +1,57 @@
+{
+  "_comment": "Paste ONE of these objects into the authProfiles array of an OOG suite, then point the environment at it via environments[].authProfile. Values written as ${VAR} are read from the environment of the machine running the tool, so nothing secret is stored in the suite file.",
+
+  "_how_to_use": [
+    "1. Replace <CLIENT_ID> and <SCOPE> with the values the React frontend uses on the target environment (VITE_APP_CLIENT_ID and VITE_APP_SCOPE).",
+    "2. Replace <TENANT_ID> in tokenUrl if the tenant differs from the one below.",
+    "3. Set the environment's authProfile to the profile name, e.g. environments[] with name 'modern-sit' -> \"authProfile\": \"sit-oauth-password\".",
+    "4. Export the referenced variables in the CI job before running the jar."
+  ],
+
+  "option_A_password_grant": {
+    "name": "sit-oauth-password",
+    "type": "client_credentials",
+    "grantType": "password",
+    "description": "User token via ROPC. Fully unattended, but the identity provider must permit the password grant and the account must not be subject to MFA.",
+    "tokenUrl": "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token",
+    "clientId": "<CLIENT_ID>",
+    "username": "${OOG_TEST_USER}",
+    "password": "${OOG_TEST_PASSWORD}",
+    "scope": "<SCOPE>"
+  },
+
+  "option_B_refresh_token_grant": {
+    "name": "sit-oauth-refresh",
+    "type": "client_credentials",
+    "grantType": "refresh_token",
+    "description": "User token from a stored refresh token. Requires one interactive login to obtain the refresh token, then runs unattended until the token is revoked or expires.",
+    "tokenUrl": "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token",
+    "clientId": "<CLIENT_ID>",
+    "refreshToken": "${OOG_REFRESH_TOKEN}",
+    "scope": "<SCOPE>"
+  },
+
+  "option_C_client_credentials": {
+    "name": "sit-oauth-app",
+    "type": "client_credentials",
+    "grantType": "client_credentials",
+    "description": "Application token. Kept here for completeness only: it carries no user identity, so services that read preferred_username from the token will reject it.",
+    "tokenUrl": "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token",
+    "clientId": "<CLIENT_ID>",
+    "clientSecret": "${OOG_CLIENT_SECRET}",
+    "scope": "<SCOPE>"
+  },
+
+  "_extra_params_example": {
+    "_note": "extraParams are appended to the token request body last and override anything the tool sets, for providers that require their own parameters.",
+    "extraParams": [
+      { "key": "resource", "value": "api://<CLIENT_ID>" }
+    ]
+  },
+
+  "_ci_example": [
+    "export OOG_TEST_USER='svc.oog@cma-cgm.com'",
+    "export OOG_TEST_PASSWORD=\"$CI_OOG_PASSWORD\"",
+    "java -jar comparison-tool.jar ci-run --suite=OOG_Assertion_-_Pricing_Suite.json --env=modern-sit --report=junit-pricing.xml"
+  ]
+}

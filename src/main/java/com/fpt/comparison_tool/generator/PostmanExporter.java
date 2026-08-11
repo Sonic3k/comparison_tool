@@ -153,10 +153,15 @@ public class PostmanExporter {
             }
             case CLIENT_CREDENTIALS -> {
                 vars.add(collectionVar("authType",     "oauth2"));
+                vars.add(collectionVar("grantType",    auth.resolvedGrantType()));
                 vars.add(collectionVar("tokenUrl",     notBlank(auth.getTokenUrl(), "")));
                 vars.add(collectionVar("clientId",     notBlank(auth.getClientId(), "")));
                 vars.add(collectionVar("clientSecret", notBlank(auth.getClientSecret(), "")));
                 vars.add(collectionVar("scope",        notBlank(auth.getScope(), "")));
+                // Only populated for the grants that use them; harmless otherwise.
+                vars.add(collectionVar("authUsername", notBlank(auth.getUsername(), "")));
+                vars.add(collectionVar("authPassword", notBlank(auth.getPassword(), "")));
+                vars.add(collectionVar("refreshToken", notBlank(auth.getRefreshToken(), "")));
                 vars.add(collectionVar("authToken",    ""));  // populated at runtime
             }
             default -> { /* SAML — not supported */ }
@@ -203,11 +208,25 @@ public class PostmanExporter {
             "    const clientId     = getVar('clientId');\n" +
             "    const clientSecret = getVar('clientSecret');\n" +
             "    const scope        = getVar('scope') || '';\n" +
+            "    const grantType    = getVar('grantType') || 'client_credentials';\n" +
+            "    const username     = getVar('authUsername') || '';\n" +
+            "    const password     = getVar('authPassword') || '';\n" +
+            "    const refreshToken = getVar('refreshToken') || '';\n" +
             "\n" +
-            "    const body = 'grant_type=client_credentials'\n" +
-            "        + '&client_id='     + encodeURIComponent(clientId)\n" +
-            "        + '&client_secret=' + encodeURIComponent(clientSecret)\n" +
+            "    let body = 'grant_type=' + encodeURIComponent(grantType)\n" +
+            "        + '&client_id=' + encodeURIComponent(clientId)\n" +
             "        + (scope ? '&scope=' + encodeURIComponent(scope) : '');\n" +
+            "\n" +
+            "    if (grantType === 'password') {\n" +
+            "        body += '&username=' + encodeURIComponent(username)\n" +
+            "             +  '&password=' + encodeURIComponent(password);\n" +
+            "        if (clientSecret) body += '&client_secret=' + encodeURIComponent(clientSecret);\n" +
+            "    } else if (grantType === 'refresh_token') {\n" +
+            "        body += '&refresh_token=' + encodeURIComponent(refreshToken);\n" +
+            "        if (clientSecret) body += '&client_secret=' + encodeURIComponent(clientSecret);\n" +
+            "    } else {\n" +
+            "        body += '&client_secret=' + encodeURIComponent(clientSecret);\n" +
+            "    }\n" +
             "\n" +
             "    pm.sendRequest({\n" +
             "        url:    tokenUrl,\n" +
@@ -272,10 +291,14 @@ public class PostmanExporter {
             }
             case CLIENT_CREDENTIALS -> {
                 values.add(envEntry("authType",     "oauth2"));
+                values.add(envEntry("grantType",    auth.resolvedGrantType()));
                 values.add(envEntry("tokenUrl",     notBlank(auth.getTokenUrl(), "")));
                 values.add(envEntry("clientId",     notBlank(auth.getClientId(), "")));
                 values.add(envEntry("clientSecret", notBlank(auth.getClientSecret(), "")));
                 values.add(envEntry("scope",        notBlank(auth.getScope(), "")));
+                values.add(envEntry("authUsername", notBlank(auth.getUsername(), "")));
+                values.add(envEntry("authPassword", notBlank(auth.getPassword(), "")));
+                values.add(envEntry("refreshToken", notBlank(auth.getRefreshToken(), "")));
                 values.add(envEntry("authToken",    ""));
             }
             default -> { /* SAML — not supported */ }

@@ -197,9 +197,28 @@ public class ExcelImportService {
             p.setEntityId(cell(row, 9));
             p.setToken(cell(row, 10));
             p.setAdditionalConfig(cell(row, 11));
+            // Columns 12-14 were added later; cell() returns "" for workbooks
+            // exported before then, which leaves the profile at its old behaviour.
+            p.setGrantType(cell(row, 12));
+            p.setRefreshToken(cell(row, 13));
+            p.setExtraParams(parseExtraParams(cell(row, 14)));
             list.add(p);
         }
         return list;
+    }
+
+    /** "key=value; key2=value2" → params. Semicolon separated so values may contain commas. */
+    private List<Param> parseExtraParams(String encoded) {
+        List<Param> params = new ArrayList<>();
+        if (encoded == null || encoded.isBlank()) return params;
+        for (String piece : encoded.split("[;\\n]")) {
+            String trimmed = piece.trim();
+            if (trimmed.isEmpty()) continue;
+            int idx = trimmed.indexOf('=');
+            if (idx <= 0) continue;
+            params.add(new Param(trimmed.substring(0, idx).trim(), trimmed.substring(idx + 1).trim()));
+        }
+        return params;
     }
 
     // ── TC Sheet ───────────────────────────────────────────────────────────────

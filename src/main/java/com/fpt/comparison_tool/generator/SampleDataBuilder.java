@@ -76,7 +76,9 @@ public class SampleDataBuilder {
                 .withTokenUrl("https://sso.company.com/saml/token")
                 .withUsername("api-user@company.com")
                 .withEntityId("legacy-api-entity"),
-            new AuthProfile("Modern-OAuth2", AuthType.CLIENT_CREDENTIALS, "OAuth2 for modern environment")
+            new AuthProfile("Modern-OAuth2", AuthType.CLIENT_CREDENTIALS,
+                    "OAuth2 token endpoint. Set grantType to password or refresh_token when the API needs a user token.")
+                .withGrantType(AuthProfile.GRANT_CLIENT_CREDENTIALS)
                 .withTokenUrl("https://auth.company.com/oauth/token")
                 .withClientId("api-client-v2")
                 .withClientSecret("********")
