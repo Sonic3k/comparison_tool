@@ -337,9 +337,15 @@ public class BrunoExporter {
                 case CLIENT_CREDENTIALS -> {
                     // No pre-request flow generated; user pastes a fetched token here
                     vars.add(variable("authToken", "", true));
+                    vars.add(variable("grantType", auth.resolvedGrantType(), false));
                     vars.add(variable("clientId", auth.getClientId() != null ? auth.getClientId() : "", false));
                     vars.add(variable("clientSecret", auth.getClientSecret() != null ? auth.getClientSecret() : "", true));
                     vars.add(variable("tokenUrl", auth.getTokenUrl() != null ? auth.getTokenUrl() : "", false));
+                    vars.add(variable("scope", auth.getScope() != null ? auth.getScope() : "", false));
+                    // Carried over so the grant can be reproduced by hand in Bruno.
+                    vars.add(variable("authUsername", auth.getUsername() != null ? auth.getUsername() : "", false));
+                    vars.add(variable("authPassword", auth.getPassword() != null ? auth.getPassword() : "", true));
+                    vars.add(variable("refreshToken", auth.getRefreshToken() != null ? auth.getRefreshToken() : "", true));
                 }
                 case BASIC -> {
                     vars.add(variable("username", auth.getUsername() != null ? auth.getUsername() : "", false));
