@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @JacksonXmlRootElement(localName = "testSuite")
 public class TestSuite {
@@ -23,6 +24,14 @@ public class TestSuite {
     @JsonProperty("authProfiles")
     private List<AuthProfile> authProfiles;
 
+    /**
+     * CopyOnWriteArrayList on purpose: in parallel runs one flow appends via
+     * {@link #putGlobalVariable} while other flows iterate the list in
+     * ExecutionService.globalVarMap (and the UI serializes it for GET /variables).
+     * A plain ArrayList threw ConcurrentModificationException there and aborted the run.
+     * Reads are far more frequent than writes (one write per extracted variable), so
+     * the copy-on-write cost is negligible.
+     */
     @JacksonXmlElementWrapper(localName = "globalVariables")
     @JacksonXmlProperty(localName = "variable")
     @JsonProperty("globalVariables")
@@ -37,7 +46,7 @@ public class TestSuite {
         this.environments    = new ArrayList<>();
         this.authProfiles    = new ArrayList<>();
         this.testGroups      = new ArrayList<>();
-        this.globalVariables = new ArrayList<>();
+        this.globalVariables = new CopyOnWriteArrayList<>();
     }
 
     public TestSuite(SuiteSettings settings, List<Environment> environments,
@@ -46,14 +55,17 @@ public class TestSuite {
         this.environments = environments != null ? environments : new ArrayList<>();
         this.authProfiles = authProfiles != null ? authProfiles : new ArrayList<>();
         this.testGroups   = testGroups   != null ? testGroups   : new ArrayList<>();
-        this.globalVariables = new ArrayList<>();
+        this.globalVariables = new CopyOnWriteArrayList<>();
     }
 
     public List<GlobalVariable> getGlobalVariables() {
-        if (globalVariables == null) globalVariables = new ArrayList<>();
+        if (globalVariables == null) globalVariables = new CopyOnWriteArrayList<>();
         return globalVariables;
     }
-    public void setGlobalVariables(List<GlobalVariable> v) { this.globalVariables = v; }
+    /** Always store a thread-safe list, whatever Jackson / importers hand over. */
+    public void setGlobalVariables(List<GlobalVariable> v) {
+        this.globalVariables = v == null ? new CopyOnWriteArrayList<>() : new CopyOnWriteArrayList<>(v);
+    }
 
     /**
      * Bare variable name: "{{abc}}", "${abc}" or " abc " all mean "abc" —
