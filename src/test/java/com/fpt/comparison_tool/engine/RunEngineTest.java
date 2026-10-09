@@ -1,11 +1,15 @@
 package com.fpt.comparison_tool.engine;
 
 import com.fpt.comparison_tool.model.Suite;
+import com.fpt.comparison_tool.model.KeyValue;
 import com.fpt.comparison_tool.result.CaseResult;
+import com.fpt.comparison_tool.result.DisabledCase;
 import com.fpt.comparison_tool.result.HookResult;
+import com.fpt.comparison_tool.result.RunHeader;
 import com.fpt.comparison_tool.result.RunSummary;
 import com.fpt.comparison_tool.result.Status;
 import com.fpt.comparison_tool.result.StepResult;
+import com.fpt.comparison_tool.result.VarUse;
 import com.fpt.comparison_tool.suite.SuiteJson;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -18,7 +22,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RunEngineTest {
@@ -45,6 +51,12 @@ class RunEngineTest {
         final List<CaseResult> cases = Collections.synchronizedList(new ArrayList<>());
         final List<HookResult> hooks = Collections.synchronizedList(new ArrayList<>());
         final List<String> order = Collections.synchronizedList(new ArrayList<>());
+        RunHeader header;
+
+        @Override
+        public void started(RunHeader h) {
+            header = h;
+        }
 
         @Override
         public void hook(HookResult r) {
@@ -320,5 +332,92 @@ class RunEngineTest {
         assertNotNull(s.baseline());
         long both = s.target().timeMs() + s.baseline().timeMs();
         assertTrue(s.durationMs() < both, "step took " + s.durationMs() + " ms, the two calls " + both + " ms");
+    }
+
+    @Test
+    void stepsRecordTheVariablesTheyUsedAndWhereTheyCameFrom() {
+        String items = """
+                [{"type": "folder", "name": "F",
+                  "setup": [{"name": "seed", "method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "shared"}},
+                             "extract": [{"name": "sid", "path": "$.id"}]}],
+                  "items": [
+                    {"type": "case", "key": "V", "steps": [
+                      {"name": "read", "url": "/items/{{sid}}", "headers": [{"key": "X-Who", "value": "{{who}}"}],
+                       "expect": {"status": "200", "assertions": ["# a comment", "$.name == {{expected}}", "$.id == {{sid}}"]}}
+                    ]}
+                  ]}]""";
+        Suite s = suite(items, "\"variables\": [{\"key\": \"expected\", \"value\": \"shared\"}, {\"key\": \"dbPassword\", \"value\": \"hunter2\"}]");
+        Collector c = new Collector();
+        engine.run(request(s), c);
+        StepResult r = c.get("V").steps().get(0);
+        assertEquals("pass", r.status(), r.reason());
+        Map<String, VarUse> vars = r.target().vars().stream().collect(Collectors.toMap(VarUse::name, v -> v));
+        VarUse sid = vars.get("sid");
+        assertEquals("setup", sid.from().kind());
+        assertEquals("F", sid.from().owner());
+        assertEquals(1, sid.from().step());
+        assertEquals("seed", sid.from().name());
+        assertEquals(List.of("URL", "Check 3"), sid.usedIn());
+        assertEquals("env", vars.get("who").from().kind());
+        assertEquals("target", vars.get("who").from().owner());
+        assertEquals(List.of("Header X-Who"), vars.get("who").usedIn());
+        assertEquals("suite", vars.get("expected").from().kind());
+        assertEquals(List.of("Check 2"), vars.get("expected").usedIn());
+        assertEquals(target.url(), vars.get("baseUrl").value());
+        assertEquals("T", c.header.variables().get("target").get("who"));
+        assertEquals("••••••", c.header.variables().get("target").get("dbPassword"));
+    }
+
+    @Test
+    void unresolvedVariablesAreRecordedAsUnset() {
+        String items = """
+                [{"type": "case", "key": "U", "steps": [{"url": "/items/{{nothing}}"}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        StepResult r = c.get("U").steps().get(0);
+        assertEquals("error", r.status());
+        VarUse u = r.target().vars().stream().filter(v -> v.name().equals("nothing")).findFirst().orElseThrow();
+        assertNull(u.value());
+        assertEquals("unset", u.from().kind());
+    }
+
+    @Test
+    void disabledCasesAndStepsAreListedWhereTheySit() {
+        String items = """
+                [{"type": "case", "key": "A", "steps": [{"url": "/slow"}]},
+                 {"type": "case", "key": "B", "disabled": true, "steps": [{"url": "/slow"}]},
+                 {"type": "folder", "name": "Off", "disabled": true, "items": [
+                    {"type": "case", "key": "C", "steps": [{"url": "/slow"}]}]},
+                 {"type": "case", "key": "D", "steps": [{"url": "/slow", "disabled": true}, {"url": "/slow"}],
+                  "cleanup": [{"name": "tidy", "url": "/slow", "disabled": true}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        List<DisabledCase> off = c.header.disabled();
+        assertEquals(List.of("B", "C"), off.stream().map(DisabledCase::key).toList());
+        assertEquals(1, off.get(0).position());
+        assertNull(off.get(0).folder());
+        assertEquals(1, off.get(1).position());
+        assertEquals("Off", off.get(1).folder());
+        assertEquals(List.of("Off"), off.get(1).path());
+        CaseResult d = c.get("D");
+        assertEquals(List.of("step:0", "cleanup:0"), d.disabledSteps().stream().map(x -> x.phase() + ":" + x.index()).toList());
+        assertNull(c.get("A").disabledSteps());
+    }
+
+    @Test
+    void tokensAreRecordedAsSentButBasicCredentialsAreMasked() {
+        String items = """
+                [{"type": "case", "key": "T", "steps": [
+                   {"url": "/headers", "headers": [{"key": "Authorization", "value": "Bearer abc.def.ghi-123456"}]},
+                   {"url": "/headers", "headers": [{"key": "Authorization", "value": "Basic dXNlcjpwYXNzd29yZA=="}]}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        List<StepResult> steps = c.get("T").steps();
+        String bearer = steps.get(0).target().requestHeaders().stream().filter(h -> h.key().equals("Authorization"))
+                .map(KeyValue::value).findFirst().orElseThrow();
+        String basic = steps.get(1).target().requestHeaders().stream().filter(h -> h.key().equals("Authorization"))
+                .map(KeyValue::value).findFirst().orElseThrow();
+        assertEquals("Bearer abc.def.ghi-123456", bearer);
+        assertFalse(basic.contains("dXNlcjpwYXNzd29yZA=="), basic);
     }
 }

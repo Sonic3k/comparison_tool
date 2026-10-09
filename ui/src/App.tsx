@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
-import { openFile, pickAndOpen, rerunCase, restoreResultsDir, saveSuite, saveSuiteAs } from "./actions";
+import { openFile, pickAndOpen, restoreResultsDir, saveSuite, saveSuiteAs } from "./actions";
 import { usePrefNumber } from "./hooks";
-import { openCase, openFolder } from "./nav";
 import { applyHash, startRouter } from "./router";
-import { runRows } from "./runRows";
+import { resultsKey } from "./results/keys";
 import { useStore } from "./store";
-import type { Phase } from "./suiteOps";
 import { CaseEditor } from "./components/CaseEditor";
 import { FindReplace, Shortcuts } from "./components/Dialogs";
 import { FolderEditor } from "./components/FolderEditor";
-import { RunMain, defaultStep } from "./components/RunView";
-import { RunsSidebar, TRIAGE } from "./components/RunsSidebar";
+import { ResultsView } from "./components/results/ResultsView";
 import { SuiteEditor } from "./components/SuiteEditor";
 import { Topbar, showDialog } from "./components/Topbar";
 import { Tree } from "./components/Tree";
@@ -105,8 +102,8 @@ export function App() {
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
       const st = useStore.getState();
-      const busy = st.runs.some((r) => r.source === "live" && !r.done);
-      const triage = st.runs.some((r) => r.triageChanged);
+      const busy = st.runs.some((r) => (r.source === "live" && !r.done) || r.rerun);
+      const triage = st.runs.some((r) => r.dirty);
       if ((st.suite && st.dirty) || busy || triage) {
         e.preventDefault();
         e.returnValue = "";
@@ -122,11 +119,13 @@ export function App() {
       <Topbar />
       {!ready ? <div /> : showWelcome ? (
         <div style={{ minHeight: 0, overflow: "auto" }}><Welcome /></div>
+      ) : view === "runs" ? (
+        <ResultsView />
       ) : (
         <div className="body">
-          {view === "edit" ? <Tree /> : <RunsSidebar />}
+          <Tree />
           <Splitter value={side} onChange={setSide} min={220} max={Math.max(260, Math.min(720, window.innerWidth - 480))} />
-          <main className="main">{view === "edit" ? <Editor /> : <RunMain />}</main>
+          <main className="main"><Editor /></main>
         </div>
       )}
       <Toasts />
@@ -206,65 +205,5 @@ function globalKey(e: KeyboardEvent) {
     showDialog((c) => <Shortcuts onClose={c} />);
     return;
   }
-  if (st.view === "runs") runsKey(e);
-}
-
-function runsKey(e: KeyboardEvent) {
-  const st = useStore.getState();
-  const run = st.runs.find((r) => r.runId === st.activeRun);
-  if (!run) return;
-  const rows = runRows({ run, suite: st.suite, filter: st.filter, search: st.search, grouping: st.grouping, older: st.runs.find((r) => r.runId === st.compareWith) });
-  const items = rows.filter((r) => r.kind === "case" || r.kind === "hook");
-  const curId = st.runSel.caseId ? `c:${st.runSel.caseId}` : st.runSel.hook;
-  const i = items.findIndex((r) => r.id === curId);
-  const go = (n: number) => {
-    const r = items[n];
-    if (!r) return;
-    e.preventDefault();
-    if (r.kind === "case") st.selectRun({ caseId: r.caseId, tab: st.runSel.tab });
-    else if (r.kind === "hook") st.selectRun({ hook: r.id, tab: st.runSel.tab });
-  };
-  const c = st.runSel.caseId ? run.cases[st.runSel.caseId] : undefined;
-  const hook = st.runSel.hook ? run.hooks.find((h) => `hook:${h.folderId ?? "suite"}:${h.hook}` === st.runSel.hook) : undefined;
-  const steps = c?.steps ?? hook?.steps ?? [];
-  const curStep = st.runSel.step ?? defaultStep(steps);
-  switch (e.key) {
-    case "j":
-      return go(i < 0 ? 0 : Math.min(items.length - 1, i + 1));
-    case "k":
-      return go(i < 0 ? 0 : Math.max(0, i - 1));
-    case "]":
-      if (steps.length) {
-        e.preventDefault();
-        st.selectRun({ ...st.runSel, step: Math.min(steps.length - 1, curStep + 1) });
-      }
-      return;
-    case "[":
-      if (steps.length) {
-        e.preventDefault();
-        st.selectRun({ ...st.runSel, step: Math.max(0, curStep - 1) });
-      }
-      return;
-    case "e":
-      if (c) {
-        const s = steps[curStep];
-        if (s) openCase(c.caseId, s.phase as Phase, s.index);
-        else openCase(c.caseId);
-      } else if (hook) {
-        const s = steps[curStep];
-        if (hook.folderId) openFolder(hook.folderId, hook.hook as Phase, s?.index ?? 0);
-        else st.select({ kind: "suite", tab: "hooks", phase: hook.hook as Phase, step: s?.index ?? 0 });
-      }
-      return;
-    case "r":
-      if (c) rerunCase(run, c.caseId);
-      return;
-    case "0":
-      if (c) st.setTriage(run.runId, c.caseId, undefined, c.triage?.note);
-      return;
-    default: {
-      const t = TRIAGE.find((x) => x.key === e.key);
-      if (t && c) st.setTriage(run.runId, c.caseId, c.triage?.label === t.id ? undefined : t.id, c.triage?.note);
-    }
-  }
+  if (st.view === "runs") resultsKey(e);
 }

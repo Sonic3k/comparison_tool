@@ -14,6 +14,7 @@ import com.fpt.comparison_tool.result.AssertionResult;
 import com.fpt.comparison_tool.result.Exchange;
 import com.fpt.comparison_tool.result.Status;
 import com.fpt.comparison_tool.result.StepResult;
+import com.fpt.comparison_tool.result.VarSource;
 import org.apache.hc.client5.http.cookie.CookieStore;
 
 import java.util.ArrayList;
@@ -23,18 +24,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 
 /**
  * Executes one step on every lane of a run: resolves variables, sends the call, saves extracted variables, then
- * checks the status expectation, the assertions (target) and, in compare runs, the baseline/target diff.
+ * checks the status expectation, the assertions (target) and, in compare runs, the baseline/target diff. Each lane's
+ * exchange records the variables the step used, with their values and where they came from.
  */
 final class StepRunner {
 
-    /** Where a step reads and writes variables and which defaults apply to it. */
+    /**
+     * Where a step reads and writes variables and which defaults apply to it. owner names what the steps belong to
+     * (a test case key, or the folder path of a setup or teardown) so saved values can say where they came from.
+     */
     record Context(Suite suite, List<Lane> lanes, Map<String, Scope> read, Map<String, Scope> shared,
                    Map<String, Scope> suiteShared, Map<String, CookieStore> cookies, List<Defaults> defaults,
-                   Map<String, String> overrides) {
+                   Map<String, String> overrides, String owner) {
     }
 
     record Prepared(String method, String url, List<KeyValue> headers, String body, int timeoutMs,
@@ -64,9 +68,10 @@ final class StepRunner {
         int maxAttempts = 1 + (so.retry() == null ? 0 : so.retry().timesOrZero());
         Attempt last = null;
         int attempts = 0;
+        VarSource ref = VarSource.step(phase, ctx.owner(), index, step.name());
         for (int a = 1; a <= maxAttempts; a++) {
             attempts = a;
-            last = attempt(step, ctx);
+            last = attempt(step, ref, ctx);
             if (last.status == Status.PASS || a == maxAttempts || control.stopped()) break;
             if (!sleep(so.retry().intervalOrDefault())) break;
         }
@@ -81,7 +86,19 @@ final class StepRunner {
                 System.currentTimeMillis() - start, last.assertions, last.diffs, last.extracted, last.missed, target, baseline);
     }
 
-    private Attempt attempt(Step step, Context ctx) {
+    private Attempt attempt(Step step, VarSource ref, Context ctx) {
+        Map<String, VarTrace> traces = new LinkedHashMap<>();
+        for (Lane lane : ctx.lanes()) traces.put(lane.name(), new VarTrace(ctx.read().get(lane.name()), ctx.overrides()));
+        return withVars(evaluate(step, ref, ctx, traces), traces);
+    }
+
+    private static Attempt withVars(Attempt a, Map<String, VarTrace> traces) {
+        Map<String, Exchange> exchanges = new LinkedHashMap<>();
+        a.exchanges.forEach((lane, ex) -> exchanges.put(lane, ex == null ? null : ex.withVars(traces.get(lane).uses())));
+        return new Attempt(a.status, a.reason, a.assertions, a.diffs, a.extracted, a.missed, exchanges);
+    }
+
+    private Attempt evaluate(Step step, VarSource ref, Context ctx, Map<String, VarTrace> traces) {
         Map<String, Exchange> exchanges = new LinkedHashMap<>();
         Map<String, HttpExecutor.Reply> replies = new LinkedHashMap<>();
         Map<String, String> extracted = new LinkedHashMap<>();
@@ -96,7 +113,8 @@ final class StepRunner {
             Thread[] threads = new Thread[lanes.size()];
             for (int i = 0; i < lanes.size(); i++) {
                 int k = i;
-                threads[i] = Thread.ofVirtual().name("lane-" + lanes.get(k).name()).start(() -> calls[k] = callLane(step, lanes.get(k), ctx));
+                threads[i] = Thread.ofVirtual().name("lane-" + lanes.get(k).name())
+                        .start(() -> calls[k] = callLane(step, ref, lanes.get(k), ctx, traces.get(lanes.get(k).name())));
             }
             boolean interrupted = false;
             for (Thread t : threads) {
@@ -111,7 +129,7 @@ final class StepRunner {
             }
             if (interrupted) Thread.currentThread().interrupt();
         } else {
-            for (int i = 0; i < lanes.size(); i++) calls[i] = callLane(step, lanes.get(i), ctx);
+            for (int i = 0; i < lanes.size(); i++) calls[i] = callLane(step, ref, lanes.get(i), ctx, traces.get(lanes.get(i).name()));
         }
         for (int i = 0; i < lanes.size(); i++) {
             Lane lane = lanes.get(i);
@@ -128,15 +146,22 @@ final class StepRunner {
 
         Lane targetLane = ctx.lanes().stream().filter(l -> !l.baseline()).findFirst().orElseThrow();
         HttpExecutor.Reply t = replies.get(targetLane.name());
-        Function<String, String> lookup = lookup(ctx, targetLane);
+        VarTrace trace = traces.get(targetLane.name());
         Expect ex = step.expectOrEmpty();
         List<AssertionResult> assertions = new ArrayList<>();
         if (ex.status() == null && ex.assertions().isEmpty() && ex.maxTimeMs() == null) {
             assertions.add(AssertionEvaluator.status("<400", t.status()));
         } else if (ex.status() != null) {
-            assertions.add(AssertionEvaluator.status(Templates.resolve(ex.status(), lookup, null), t.status()));
+            assertions.add(AssertionEvaluator.status(trace.resolve(ex.status(), "Check 1", null), t.status()));
         }
-        List<String> lines = ex.assertions().stream().map(l -> Templates.resolve(l, lookup, null)).toList();
+        // checks are numbered as they are reported: the status check first, then every line that is not a comment
+        int check = assertions.size() + 1;
+        List<String> lines = new ArrayList<>();
+        for (String l : ex.assertions()) {
+            String trimmed = l == null ? "" : l.trim();
+            boolean counted = !trimmed.isEmpty() && !trimmed.startsWith("#") && !trimmed.startsWith("//");
+            lines.add(counted ? trace.resolve(l, "Check " + check++, null) : l);
+        }
         assertions.addAll(AssertionEvaluator.evaluate(lines, t.binary() ? null : t.body(), t.headers()));
         if (ex.maxTimeMs() != null) assertions.add(AssertionEvaluator.time(ex.maxTimeMs(), t.timeMs()));
 
@@ -172,12 +197,12 @@ final class StepRunner {
                             List<String> missed) {
     }
 
-    private LaneCall callLane(Step step, Lane lane, Context ctx) {
+    private LaneCall callLane(Step step, VarSource ref, Lane lane, Context ctx, VarTrace trace) {
         Map<String, String> extracted = new LinkedHashMap<>();
         List<String> missed = new ArrayList<>();
         Prepared p;
         try {
-            p = prepare(step, lane, ctx);
+            p = prepare(step, lane, ctx, trace);
         } catch (RuntimeException e) {
             String msg = HttpExecutor.describe(e);
             return new LaneCall(new Exchange(lane.env().name(), step.method(), step.url(), null, null, null, null, null, null,
@@ -194,7 +219,7 @@ final class StepRunner {
             Exchange ex = new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
                     reply.status(), reply.timeMs(), toList(reply.headers()), reply.contentType(), reply.size(),
                     reply.binary() ? "<binary content, " + reply.size() + " bytes>" : reply.body(), null, null);
-            extract(step, lane, reply, ctx, extracted, missed);
+            extract(step, ref, lane, reply, ctx, extracted, missed);
             return new LaneCall(ex, reply, null, extracted, missed);
         } catch (Exception e) {
             String msg = HttpExecutor.describe(e);
@@ -206,29 +231,35 @@ final class StepRunner {
     // ---------------------------------------------------------------- request preparation
 
     Prepared prepare(Step step, Lane lane, Context ctx) {
-        Function<String, String> lookup = lookup(ctx, lane);
+        return prepare(step, lane, ctx, new VarTrace(ctx.read().get(lane.name()), ctx.overrides()));
+    }
+
+    Prepared prepare(Step step, Lane lane, Context ctx, VarTrace trace) {
         Set<String> missing = new LinkedHashSet<>();
         String method = step.method();
 
-        String url = Templates.resolve(step.url(), lookup, missing);
+        String url = trace.resolve(step.url(), "URL", missing);
         if (!Urls.isAbsolute(url)) {
-            String base = Templates.resolve(lane.env().baseUrl(), lookup, missing);
+            String base = trace.resolve(lane.env().baseUrl(), "URL", missing);
             if (base == null || base.isBlank()) {
                 return new Prepared(method, url, List.of(), null, 0, missing,
                         "Environment '" + lane.env().name() + "' has no base URL and the step URL is not absolute");
             }
+            trace.note("baseUrl", base, VarSource.env(lane.env().name()), "URL");
             url = Urls.join(base, url);
         }
         List<KeyValue> query = new ArrayList<>();
         for (KeyValue q : step.query()) {
-            if (q.active()) query.add(KeyValue.of(Templates.resolve(q.key(), lookup, missing), Templates.resolve(q.value(), lookup, missing)));
+            if (!q.active()) continue;
+            String where = "Query " + q.key();
+            query.add(KeyValue.of(trace.resolve(q.key(), where, missing), trace.resolve(q.value(), where, missing)));
         }
         if (!query.isEmpty()) url = Urls.withQuery(url, query);
 
         Map<String, KeyValue> headers = new LinkedHashMap<>();
-        for (KeyValue h : lane.env().headers()) putHeader(headers, h, lookup, missing);
-        for (Defaults d : ctx.defaults()) for (KeyValue h : d.headers()) putHeader(headers, h, lookup, missing);
-        for (KeyValue h : step.headers()) putHeader(headers, h, lookup, missing);
+        for (KeyValue h : lane.env().headers()) putHeader(headers, h, trace, missing);
+        for (Defaults d : ctx.defaults()) for (KeyValue h : d.headers()) putHeader(headers, h, trace, missing);
+        for (KeyValue h : step.headers()) putHeader(headers, h, trace, missing);
 
         String body = null;
         Body b = step.body();
@@ -237,18 +268,18 @@ final class StepRunner {
                 case Body.FORM -> {
                     List<KeyValue> fields = new ArrayList<>();
                     for (KeyValue f : b.form()) {
-                        if (f.active()) fields.add(KeyValue.of(Templates.resolve(f.key(), lookup, missing), Templates.resolve(f.value(), lookup, missing)));
+                        if (f.active()) fields.add(KeyValue.of(trace.resolve(f.key(), "Body", missing), trace.resolve(f.value(), "Body", missing)));
                     }
                     body = Urls.form(fields);
                     headers.put("content-type", KeyValue.of("Content-Type", "application/x-www-form-urlencoded"));
                 }
                 case Body.TEXT -> {
-                    body = Templates.resolve(b.raw(), lookup, missing);
+                    body = trace.resolve(b.raw(), "Body", missing);
                     headers.putIfAbsent("content-type", KeyValue.of("Content-Type", "text/plain"));
                 }
                 default -> {
                     String text = b.json() != null ? b.json().toString() : b.raw();
-                    body = Templates.resolve(text, lookup, missing);
+                    body = trace.resolve(text, "Body", missing);
                     headers.putIfAbsent("content-type", KeyValue.of("Content-Type", "application/json"));
                 }
             }
@@ -266,7 +297,7 @@ final class StepRunner {
                 return new Prepared(method, url, headerList, body, 0, missing, "Unknown auth profile '" + authName + "'");
             }
             try {
-                String value = auth.authorization(profile, lookup);
+                String value = auth.authorization(profile, trace.lookup("Auth"));
                 if (value != null) {
                     headerList.removeIf(h -> h.key().equalsIgnoreCase("Authorization"));
                     headerList.add(KeyValue.of("Authorization", value));
@@ -281,24 +312,15 @@ final class StepRunner {
         return new Prepared(method, url, headerList, body, timeout == null ? DEFAULT_TIMEOUT_MS : timeout, missing, null);
     }
 
-    private static void putHeader(Map<String, KeyValue> headers, KeyValue h, Function<String, String> lookup, Set<String> missing) {
+    private static void putHeader(Map<String, KeyValue> headers, KeyValue h, VarTrace trace, Set<String> missing) {
         if (!h.active()) return;
         String name = h.key().trim();
-        headers.put(name.toLowerCase(Locale.ROOT), KeyValue.of(name, Templates.resolve(h.value(), lookup, missing).trim()));
-    }
-
-    static Function<String, String> lookup(Context ctx, Lane lane) {
-        Scope scope = ctx.read().get(lane.name());
-        Map<String, String> overrides = ctx.overrides();
-        return name -> {
-            String v = overrides.get(name);
-            return v != null ? v : scope.get(name);
-        };
+        headers.put(name.toLowerCase(Locale.ROOT), KeyValue.of(name, trace.resolve(h.value(), "Header " + name, missing).trim()));
     }
 
     // ---------------------------------------------------------------- extraction
 
-    private static void extract(Step step, Lane lane, HttpExecutor.Reply reply, Context ctx,
+    private static void extract(Step step, VarSource ref, Lane lane, HttpExecutor.Reply reply, Context ctx,
                                 Map<String, String> extracted, List<String> missed) {
         for (Extract e : step.extract()) {
             String value = ValuePaths.read(e.path(), reply.status(), reply.headers(), reply.binary() ? null : reply.body());
@@ -308,7 +330,7 @@ final class StepRunner {
             }
             Scope s = e.toSuite() ? ctx.suiteShared().get(lane.name())
                     : e.toFolder() ? ctx.shared().get(lane.name()) : ctx.read().get(lane.name());
-            s.set(e.name(), value);
+            s.set(e.name(), value, ref);
             if (!lane.baseline()) extracted.put(e.name(), value);
         }
     }
@@ -334,11 +356,18 @@ final class StepRunner {
         return out;
     }
 
+    /**
+     * Headers as recorded in results. Tokens are kept as sent (they expire, and a copied request should work);
+     * Basic credentials and API keys, which do not expire, are masked.
+     */
     static List<KeyValue> mask(List<KeyValue> headers) {
         List<KeyValue> out = new ArrayList<>(headers.size());
         for (KeyValue h : headers) {
             String k = h.key().toLowerCase(Locale.ROOT);
-            if (k.equals("authorization") || k.equals("proxy-authorization") || k.contains("api-key") || k.contains("apikey")) {
+            String v = h.value() == null ? "" : h.value().trim();
+            boolean basic = (k.equals("authorization") || k.equals("proxy-authorization"))
+                    && v.regionMatches(true, 0, "Basic ", 0, 6);
+            if (basic || k.contains("api-key") || k.contains("apikey")) {
                 out.add(KeyValue.of(h.key(), maskValue(h.value())));
             } else {
                 out.add(h);

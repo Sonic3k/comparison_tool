@@ -22,6 +22,11 @@ async function json<T>(url: string, body?: unknown): Promise<T> {
 }
 
 export interface Opened { suite: Suite; format: string; notes: string[]; fileName: string; issues: Issue[] }
+/** One result file in the results folder, reduced to the outcome of each test case. */
+export interface HistoryStatuses {
+  name?: string; runId: string; suite: string; env: string; baselineEnv?: string; startedAt: string; selection?: string;
+  counts?: Record<string, number>; statuses: Record<string, string>;
+}
 export interface Info { tool: string; file?: { name: string; path: string; resultsDir: string } }
 
 export const api = {
@@ -48,7 +53,7 @@ export const api = {
     await check(r);
     return { blob: await r.blob(), name: fileName(r) ?? "suite" };
   },
-  startRun: (body: { suite: Suite; env?: string; baselineEnv?: string; selection?: Selection; options?: RunOptions }) =>
+  startRun: (body: { suite: Suite; env?: string; baselineEnv?: string; selection?: Selection; options?: RunOptions; persist?: boolean }) =>
     json<{ runId: string; header: RunHeader; resultFile?: string }>("api/runs", body),
   events: (runId: string, after: number) =>
     json<{ events: { seq: number; type: string; data: unknown }[]; next: number; done: boolean }>(
@@ -56,6 +61,13 @@ export const api = {
   stop: (runId: string) => json<{ stopping: boolean; hard: boolean }>(`api/runs/${encodeURIComponent(runId)}/stop`, {}),
   saveRun: (runId: string, data: unknown) => json<{ path: string }>(`api/runs/${encodeURIComponent(runId)}/save`, data),
   results: () => json<{ name: string; size: number; modified: string }[]>("api/results"),
+  statuses: (suite?: string, limit = 12) =>
+    json<HistoryStatuses[]>(`api/results/statuses?limit=${limit}${suite ? "&suite=" + encodeURIComponent(suite) : ""}`),
+  saveResult: async (name: string, text: string): Promise<{ path: string; name: string }> => {
+    const r = await fetch(`api/results/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: text });
+    await check(r);
+    return r.json();
+  },
   result: async (name: string): Promise<string> => {
     const r = await fetch(`api/results/${encodeURIComponent(name)}`);
     await check(r);

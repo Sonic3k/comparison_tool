@@ -8,12 +8,14 @@ import java.util.Map;
 /**
  * Per-run choices. capture: all (keep every body), failed (bodies of test cases that did not pass, the default) or
  * none. hooks: run (default), reuse (skip setup and teardown and seed their variables from {@code reuse}, keyed
- * "suite" or folder id, then lane) or skip. variables override every other variable source.
+ * "suite" or folder id, then lane) or skip. variables override every other variable source. parent names the run
+ * whose test cases this run repeats in place (the results are merged into that run by the caller).
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record RunOptions(Integer concurrency, String capture, Integer bodyLimitKb, String hooks,
-                         Map<String, Map<String, Map<String, String>>> reuse, Map<String, String> variables) {
+                         Map<String, Map<String, Map<String, String>>> reuse, Map<String, String> variables,
+                         String parent) {
 
     public static final String CAPTURE_ALL = "all";
     public static final String CAPTURE_FAILED = "failed";
@@ -33,7 +35,12 @@ public record RunOptions(Integer concurrency, String capture, Integer bodyLimitK
         concurrency = concurrency == null || concurrency <= 0 ? null : concurrency;
     }
 
+    public RunOptions(Integer concurrency, String capture, Integer bodyLimitKb, String hooks,
+                      Map<String, Map<String, Map<String, String>>> reuse, Map<String, String> variables) {
+        this(concurrency, capture, bodyLimitKb, hooks, reuse, variables, null);
+    }
+
     public static RunOptions defaults() {
-        return new RunOptions(null, null, null, null, null, null);
+        return new RunOptions(null, null, null, null, null, null, null);
     }
 }

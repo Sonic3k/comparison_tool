@@ -9,4 +9,5 @@ ui/dist/
 .DS_Store
 Thumbs.db
 results/
+!ui/src/**/results/
 *.run.jsonl

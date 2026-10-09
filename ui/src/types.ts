@@ -41,11 +41,16 @@ export interface Suite {
 
 export type StatusValue = "pass" | "fail" | "error" | "blocked" | "skipped";
 export interface AssertionResult { expr: string; pass: boolean; message?: string }
+/** Where a variable's value came from: env, suite, override, builtin, reused, setup, teardown, pre, step, cleanup, unset. */
+export interface VarSource { kind: string; owner?: string; step?: number; name?: string }
+/** A variable a step used, with its value when the step was sent and the places that used it. */
+export interface VarUse { name: string; value?: string | null; from?: VarSource; usedIn?: string[] }
 export interface Exchange {
   env?: string; method?: string; url?: string; requestHeaders?: KeyValue[]; requestBody?: string; status?: number;
   timeMs?: number; responseHeaders?: KeyValue[]; contentType?: string; responseSize?: number; responseBody?: string;
-  truncated?: boolean; error?: string;
+  truncated?: boolean; error?: string; vars?: VarUse[];
 }
+export interface StepRef { phase: string; index: number; name: string }
 export interface StepResult {
   phase: string; index: number; name: string; status: StatusValue; reason?: string; attempts?: number; durationMs?: number;
   assertions?: AssertionResult[]; diffs?: string[]; extracted?: Record<string, string>; missed?: string[];
@@ -55,14 +60,20 @@ export interface Triage { label?: string; note?: string }
 export interface CaseResult {
   caseId: string; key: string; name: string; folderId?: string; path?: string[]; tags?: string[]; status: StatusValue;
   reason?: string; cleanupFailed?: boolean; startedAt?: string; durationMs?: number; steps?: StepResult[]; triage?: Triage;
+  disabledSteps?: StepRef[]; attempt?: number;
 }
 export interface HookResult {
   folderId?: string; path?: string[]; hook: "setup" | "teardown"; status: StatusValue; reason?: string; startedAt?: string;
-  durationMs?: number; steps?: StepResult[]; vars?: Record<string, Record<string, string>>;
+  durationMs?: number; steps?: StepResult[]; vars?: Record<string, Record<string, string>>; disabledSteps?: StepRef[]; attempt?: number;
 }
+/** A test case of the run's scope that did not run because it, or a folder above it (folder), is disabled. */
+export interface DisabledCase { caseId: string; key: string; name: string; folderId?: string; path?: string[]; position?: number; folder?: string }
+/** Test cases run again inside a run. */
+export interface Rerun { runId: string; startedAt: string; finishedAt?: string; caseIds: string[]; hooks?: string }
 export interface RunHeader {
   schema?: string; runId: string; suite: string; suiteFile?: string; env: string; baselineEnv?: string; startedAt: string;
   selection?: string; concurrency?: number; capture?: string; hooks?: string; planned?: number; tool?: string; caseIds?: string[];
+  disabled?: DisabledCase[]; variables?: Record<string, Record<string, string>>; parent?: string; reruns?: Rerun[];
 }
 export interface RunSummary {
   total: number; counts: Record<string, number>; finishedAt?: string; durationMs?: number; stopped?: boolean; error?: string;
@@ -71,5 +82,5 @@ export interface Issue { level: "error" | "warning"; where: string; message: str
 export interface Selection { caseIds?: string[]; caseKeys?: string[]; folderIds?: string[]; folderPaths?: string[]; tags?: string[] }
 export interface RunOptions {
   concurrency?: number; capture?: string; bodyLimitKb?: number; hooks?: "run" | "reuse" | "skip";
-  reuse?: Record<string, Record<string, Record<string, string>>>; variables?: Record<string, string>;
+  reuse?: Record<string, Record<string, Record<string, string>>>; variables?: Record<string, string>; parent?: string;
 }

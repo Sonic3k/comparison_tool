@@ -8,7 +8,7 @@ import { parseRunFile, runData, serializeRun } from "./runs";
 import { runFileName, safe, useStore } from "./store";
 import { cloneNode, emptyCase, emptyFolder, find, insertNodes, removeNodes, updateNode } from "./suiteOps";
 import type { Folder, Node, Suite } from "./types";
-import { RunDialog, reuseMap, selectionOf } from "./components/Dialogs";
+import { RunDialog, selectionOf } from "./components/Dialogs";
 import { choose, useOverlay } from "./components/ui";
 
 const SUITE_TYPES = {
@@ -358,39 +358,20 @@ export function openRunDialog(scope?: "all" | "selected" | "tags") {
   id = useOverlay.getState().showDialog(createElement(RunDialog, { onClose: () => useOverlay.getState().closeDialog(id), initialScope: scope }));
 }
 
-export function rerun(run: RunView, which: "all" | "notpass", reuseSetup: boolean) {
-  const st = useStore.getState();
-  const ids = which === "all" ? run.header.caseIds ?? Object.keys(run.cases)
-    : Object.values(run.cases).filter((c) => c.status !== "pass").map((c) => c.caseId);
-  if (!ids.length) return st.toast("info", "Nothing to run again");
-  const options = reuseSetup ? { hooks: "reuse" as const, reuse: reuseMap(run.hooks) } : undefined;
-  const envs = (st.suite?.environments ?? []).map((e) => e.name);
-  if (run.header.env && run.header.env !== st.env && envs.includes(run.header.env)) {
-    st.setEnv(run.header.env, run.header.baselineEnv && envs.includes(run.header.baselineEnv) ? run.header.baselineEnv : undefined);
-  }
-  st.startRun({ caseIds: ids }, options);
-}
-
-export function rerunCase(run: RunView | undefined, caseId: string, reuseSetup = false) {
-  const st = useStore.getState();
-  if (!st.suite || !find(st.suite, caseId)) return st.toast("error", "This test case is not in the open suite");
-  const options = reuseSetup && run ? { hooks: "reuse" as const, reuse: reuseMap(run.hooks) } : undefined;
-  st.startRun({ caseIds: [caseId] }, options);
-}
-
 // ---------------------------------------------------------------- results
 
 export async function saveRunResult(run: RunView): Promise<void> {
   const st = useStore.getState();
   const text = serializeRun(run);
   try {
-    if (run.resultFile && run.source === "live") {
-      const r = await api.saveRun(run.runId, runData(run));
-      useStore.getState().markRunSaved(run.runId, r.path);
+    if (st.serverFile) {
+      const name = run.serverName ?? run.fileName ?? runFileName(run);
+      const r = await api.saveResult(name, text);
+      useStore.getState().markRunSaved(run.runId, r.name, r.name);
       st.toast("ok", `Saved to ${r.path}`);
       return;
     }
-    const name = run.fileName ?? runFileName(run);
+    const name = run.savedTo ?? run.fileName ?? runFileName(run);
     if (st.resultsDir) {
       try {
         await writeInFolder(st.resultsDir, name, text);
@@ -416,10 +397,10 @@ export async function saveRunResult(run: RunView): Promise<void> {
   }
 }
 
-export async function exportReport(run: RunView, format: "excel" | "junit"): Promise<void> {
+export async function exportReport(run: RunView, format: "excel" | "junit", only?: Set<string>): Promise<void> {
   const st = useStore.getState();
   try {
-    const { blob, name } = await api.report(runData(run), format);
+    const { blob, name } = await api.report(runData(run, only), format);
     if (canSaveFiles) {
       const h = await saveAs(blob, name, "Report", format === "excel"
         ? { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] }
@@ -482,6 +463,8 @@ export async function historyEntries(): Promise<HistoryEntry[]> {
 export async function openHistory(e: HistoryEntry): Promise<void> {
   try {
     const run = parseRunFile(await e.load(), e.name);
+    if (useStore.getState().serverFile) run.serverName = e.name;
+    else run.savedTo = e.name;
     const existing = useStore.getState().runs.find((r) => r.runId === run.runId);
     if (existing) useStore.getState().setActiveRun(existing.runId);
     else useStore.getState().addRun(run);

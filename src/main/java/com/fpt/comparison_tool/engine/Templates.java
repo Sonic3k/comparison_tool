@@ -21,13 +21,20 @@ public final class Templates {
     }
 
     public static String resolve(String text, Function<String, String> lookup, Set<String> unresolved) {
+        return substitute(text, name -> {
+            String value = name.startsWith("$") ? builtIn(name) : null;
+            return value != null ? value : lookup.apply(name);
+        }, unresolved);
+    }
+
+    /** Like {@link #resolve} but every name, built-ins included, goes to the lookup. */
+    public static String substitute(String text, Function<String, String> lookup, Set<String> unresolved) {
         if (text == null || text.isEmpty() || !text.contains("{{")) return text;
         Matcher m = VAR.matcher(text);
         StringBuilder out = new StringBuilder(text.length() + 32);
         while (m.find()) {
             String name = m.group(1);
-            String value = name.startsWith("$") ? builtIn(name) : null;
-            if (value == null) value = lookup.apply(name);
+            String value = lookup.apply(name);
             if (value == null) {
                 if (unresolved != null) unresolved.add(name);
                 value = m.group(0);
@@ -50,7 +57,8 @@ public final class Templates {
         return names;
     }
 
-    private static String builtIn(String name) {
+    /** Value of a built-in such as $guid, or null when the name is not one. */
+    public static String builtIn(String name) {
         return switch (name) {
             case "$guid", "$randomUUID" -> UUID.randomUUID().toString();
             case "$timestamp" -> String.valueOf(Instant.now().getEpochSecond());

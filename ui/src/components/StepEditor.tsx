@@ -9,7 +9,7 @@ import type { Body, Extract, Issue, KeyValue, Step, StepOptions } from "../types
 import { CodeEditor } from "./CodeEditor";
 import { CurlImport } from "./Dialogs";
 import { KeyValueTable } from "./KeyValueTable";
-import { StepResultView } from "./ResultViews";
+import { StepTabs } from "./results/StepTabs";
 import { Button, Check, DropMenu, Field, NumberInput, Splitter, TagInput, Tabs, copyText, useOverlay } from "./ui";
 
 export interface StepContext {
@@ -199,8 +199,8 @@ export function StepEditor({ step, onChange, onDelete, onDuplicate, ctx }: {
                 <span className="faint" style={{ fontSize: 12 }}>{env}{baselineEnv ? ` vs ${baselineEnv}` : ""}</span>
                 <Button size="sm" variant="ghost" className="right" icon={<X size={13} />} title="Close" onClick={() => useStore.getState().setTryResult(key, undefined)} />
               </div>
-              <div className="resp-body" style={{ padding: 0 }}>
-                <StepResultView r={result} actions={{ onAssert: addAssertion, onExtract: addExtract }} />
+              <div className="resp-body tabs-host">
+                <StepTabs step={result} actions={{ onAssert: addAssertion, onExtract: addExtract }} fileBase="send" />
               </div>
             </div>
           </>

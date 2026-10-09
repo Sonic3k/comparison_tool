@@ -2,11 +2,14 @@ import { create } from "zustand";
 import { api } from "./api";
 import { idbSet, pref, setPref, writeInFolder } from "./files";
 import type { RunView } from "./runs";
-import { serializeRun } from "./runs";
+import { emptyRun, serializeRun } from "./runs";
+import type { Delta, Filter, GroupBy, SortBy } from "./results/model";
+import type { PastRun } from "./results/history";
 import type { Phase } from "./suiteOps";
 import { allCases, find } from "./suiteOps";
 import type { CaseResult, HookResult, Issue, RunHeader, RunOptions, RunSummary, Selection, StatusValue, StepResult, Suite } from "./types";
 
+export type { Filter } from "./results/model";
 export type View = "edit" | "runs";
 export interface Sel {
   kind: "suite" | "folder" | "case";
@@ -15,19 +18,30 @@ export interface Sel {
   phase?: Phase;
   step?: number;
 }
+/** What the results screen shows in its detail panel: a test case or a hook, one of its steps (phase:index) and a tab. */
 export interface RunSel {
   caseId?: string;
   hook?: string;
-  step?: number;
+  step?: string;
   tab?: string;
+  /** An earlier attempt of the test case (1 = first); unset shows the latest. */
+  attempt?: number;
 }
-export type Filter = "all" | "notpass" | StatusValue;
 export interface Toast {
   id: number;
   kind: "info" | "ok" | "error";
   text: string;
   action?: { label: string; run: () => void };
 }
+export type ColumnId = "failedAt" | "what" | "http" | "time" | "change" | "label";
+export const COLUMNS: { id: ColumnId; label: string }[] = [
+  { id: "failedAt", label: "Failed at" },
+  { id: "what", label: "What failed" },
+  { id: "http", label: "HTTP" },
+  { id: "time", label: "Time" },
+  { id: "change", label: "vs previous" },
+  { id: "label", label: "Label" },
+];
 
 interface State {
   suite: Suite | null;
@@ -50,10 +64,23 @@ interface State {
   activeRun?: string;
   runSel: RunSel;
   filter: Filter;
+  delta?: Delta;
+  group: GroupBy;
+  sortBy: SortBy;
   search: string;
+  searchBodies: boolean;
+  groupOpen: Record<string, boolean>;
+  checked: Record<string, true>;
+  dock: "bottom" | "right";
+  detailSize: number;
+  maximized: boolean;
+  columns: Record<ColumnId, boolean>;
+  pastRuns: PastRun[] | null;
+  pastSuite?: string;
+  compareWith: string;
+  /** The test case the editor was opened from on the results screen, for the way back. */
+  fromResults?: { runId: string; caseId?: string; label: string };
   treeSearch: string;
-  grouping: "tree" | "groups";
-  compareWith?: string;
   toasts: Toast[];
   resultsDir: unknown;
   resultsDirName?: string;
@@ -82,12 +109,22 @@ interface State {
   setActiveRun(runId?: string): void;
   selectRun(sel: RunSel): void;
   setFilter(f: Filter): void;
+  setDelta(d?: Delta): void;
+  setGroup(g: GroupBy): void;
+  setSort(s: SortBy): void;
   setSearch(s: string): void;
+  setSearchBodies(on: boolean): void;
+  setGroupOpen(ids: string[], open: boolean | undefined): void;
+  setChecked(ids: string[], on: boolean): void;
+  clearChecked(): void;
+  setDock(d: "bottom" | "right"): void;
+  setDetailSize(px: number): void;
+  setMaximized(on: boolean): void;
+  setColumn(id: ColumnId, on: boolean): void;
+  setCompareWith(pick: string): void;
   setTreeSearch(s: string): void;
-  setGrouping(g: "tree" | "groups"): void;
-  setCompareWith(runId?: string): void;
-  setTriage(runId: string, caseId: string, label?: string, note?: string): void;
-  markRunSaved(runId: string, name: string): void;
+  setTriage(runId: string, caseIds: string[], change: { label?: string | null; note?: string | null }): void;
+  markRunSaved(runId: string, name: string, serverName?: string): void;
   setResultsDir(dir: unknown, name?: string): void;
   setTheme(t: "light" | "dark"): void;
   setTryResult(key: string, r: StepResult | undefined): void;
@@ -99,6 +136,8 @@ let toastSeq = 1;
 let validateTimer: number | undefined;
 let draftTimer: number | undefined;
 let lastEdit = { key: "", at: 0 };
+
+const DEFAULT_COLUMNS: Record<ColumnId, boolean> = { failedAt: true, what: true, http: true, time: true, change: true, label: true };
 
 export const useStore = create<State>((set, get) => ({
   suite: null,
@@ -118,9 +157,19 @@ export const useStore = create<State>((set, get) => ({
   runs: [],
   runSel: {},
   filter: "notpass",
+  group: pref<GroupBy>("results.group", "folder"),
+  sortBy: "suite",
   search: "",
+  searchBodies: pref<boolean>("results.searchBodies", false),
+  groupOpen: {},
+  checked: {},
+  dock: pref<"bottom" | "right">("results.dock", "bottom"),
+  detailSize: pref<number>("results.detailSize", 0),
+  maximized: false,
+  columns: { ...DEFAULT_COLUMNS, ...pref<Partial<Record<ColumnId, boolean>>>("results.columns", {}) },
+  pastRuns: null,
+  compareWith: "auto",
   treeSearch: "",
-  grouping: "tree",
   toasts: [],
   resultsDir: null,
   theme: pref<"light" | "dark">("theme", "light"),
@@ -156,6 +205,7 @@ export const useStore = create<State>((set, get) => ({
       view: "edit",
       treeSearch: "",
       tryResults: {},
+      fromResults: undefined,
     });
     if (!info.issues) get().validate();
   },
@@ -227,7 +277,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setView(v) {
-    set({ view: v });
+    set((s) => ({ view: v, fromResults: v === "runs" ? undefined : s.fromResults }));
   },
 
   setEnv(env, baseline) {
@@ -247,15 +297,16 @@ export const useStore = create<State>((set, get) => ({
   async startRun(selection, options) {
     const { suite, env, baselineEnv } = get();
     if (!suite) return;
-    const capture = options?.capture ?? (plannedCount(suite, selection) <= 60 ? "all" : "failed");
+    const planned = plannedCount(suite, selection);
+    const capture = options?.capture ?? (planned <= 60 ? "all" : "failed");
     try {
       const res = await api.startRun({ suite, env, baselineEnv, selection, options: { ...options, capture } });
-      const run: RunView = {
-        runId: res.runId, header: res.header, hooks: [], cases: {}, running: {}, source: "live",
-        resultFile: res.resultFile, nextSeq: 0, done: false,
-      };
+      const run = emptyRun(res.header, { resultFile: res.resultFile, serverName: baseName(res.resultFile) });
       const single = selection?.caseIds?.length === 1 && !selection.folderIds?.length && !selection.tags?.length ? selection.caseIds[0] : undefined;
-      set((s) => ({ runs: [run, ...s.runs].slice(0, 20), activeRun: run.runId, view: "runs", runSel: single ? { caseId: single } : {}, filter: "all", search: "" }));
+      set((s) => ({
+        runs: [run, ...s.runs].slice(0, 20), activeRun: run.runId, view: "runs", runSel: single ? { caseId: single } : {},
+        filter: planned <= 60 ? "all" : "notpass", delta: undefined, search: "", checked: {}, groupOpen: {}, maximized: false,
+      }));
       poll(run.runId);
     } catch (e) {
       get().toast("error", (e as Error).message);
@@ -272,18 +323,21 @@ export const useStore = create<State>((set, get) => ({
   },
 
   addRun(run) {
-    set((s) => ({ runs: [run, ...s.runs.filter((r) => r.runId !== run.runId)].slice(0, 20), activeRun: run.runId, view: "runs", runSel: {}, filter: "notpass", search: "" }));
+    set((s) => ({
+      runs: [run, ...s.runs.filter((r) => r.runId !== run.runId)].slice(0, 20), activeRun: run.runId, view: "runs", runSel: {},
+      filter: "notpass", delta: undefined, search: "", checked: {}, groupOpen: {}, maximized: false,
+    }));
   },
 
   removeRun(runId) {
     set((s) => {
       const runs = s.runs.filter((r) => r.runId !== runId);
-      return { runs, activeRun: s.activeRun === runId ? runs[0]?.runId : s.activeRun, compareWith: s.compareWith === runId ? undefined : s.compareWith, runSel: s.activeRun === runId ? {} : s.runSel };
+      return { runs, activeRun: s.activeRun === runId ? runs[0]?.runId : s.activeRun, runSel: s.activeRun === runId ? {} : s.runSel, checked: {} };
     });
   },
 
   setActiveRun(runId) {
-    set((s) => ({ activeRun: runId, runSel: {}, compareWith: s.compareWith === runId ? undefined : s.compareWith }));
+    set({ activeRun: runId, runSel: {}, checked: {}, groupOpen: {}, delta: undefined, maximized: false, compareWith: "auto" });
   },
 
   selectRun(sel) {
@@ -294,40 +348,111 @@ export const useStore = create<State>((set, get) => ({
     set({ filter: f });
   },
 
+  setDelta(d) {
+    set((s) => ({ delta: d, filter: d === "fixed" ? "all" : d ? (s.filter === "pass" || s.filter === "disabled" ? "notpass" : s.filter) : s.filter }));
+  },
+
+  setGroup(g) {
+    set({ group: g, groupOpen: {} });
+    setPref("results.group", g);
+  },
+
+  setSort(sortBy) {
+    set({ sortBy });
+  },
+
   setSearch(s) {
     set({ search: s });
+  },
+
+  setSearchBodies(on) {
+    set({ searchBodies: on });
+    setPref("results.searchBodies", on);
+  },
+
+  setGroupOpen(ids, open) {
+    set((s) => {
+      const next = { ...s.groupOpen };
+      for (const id of ids) {
+        if (open === undefined) delete next[id];
+        else next[id] = open;
+      }
+      return { groupOpen: next };
+    });
+  },
+
+  setChecked(ids, on) {
+    set((s) => {
+      const next = { ...s.checked };
+      for (const id of ids) {
+        if (on) next[id] = true;
+        else delete next[id];
+      }
+      return { checked: next };
+    });
+  },
+
+  clearChecked() {
+    set({ checked: {} });
+  },
+
+  setDock(d) {
+    set({ dock: d });
+    setPref("results.dock", d);
+  },
+
+  setDetailSize(px) {
+    set({ detailSize: px });
+    setPref("results.detailSize", px);
+  },
+
+  setMaximized(on) {
+    set({ maximized: on });
+  },
+
+  setColumn(id, on) {
+    set((s) => {
+      const columns = { ...s.columns, [id]: on };
+      setPref("results.columns", columns);
+      return { columns };
+    });
+  },
+
+  setCompareWith(pick) {
+    set({ compareWith: pick });
   },
 
   setTreeSearch(s) {
     set({ treeSearch: s });
   },
 
-  setGrouping(g) {
-    set({ grouping: g });
-  },
-
-  setCompareWith(runId) {
-    set({ compareWith: runId });
-  },
-
-  setTriage(runId, caseId, label, note) {
+  setTriage(runId, caseIds, change) {
     set((s) => ({
       runs: s.runs.map((r) => {
-        if (r.runId !== runId || !r.cases[caseId]) return r;
-        const c = r.cases[caseId];
-        const triage = { label: label || undefined, note: note || undefined };
-        const cleaned: CaseResult = { ...c, triage: triage.label || triage.note ? triage : undefined };
-        return { ...r, cases: { ...r.cases, [caseId]: cleaned }, triageChanged: true };
+        if (r.runId !== runId) return r;
+        const cases = { ...r.cases };
+        let touched = false;
+        for (const id of caseIds) {
+          const c = cases[id];
+          if (!c) continue;
+          const label = change.label === undefined ? c.triage?.label : change.label || undefined;
+          const note = change.note === undefined ? c.triage?.note : change.note || undefined;
+          const cleaned: CaseResult = { ...c, triage: label || note ? { label, note } : undefined };
+          cases[id] = cleaned;
+          touched = true;
+        }
+        return touched ? { ...r, cases, dirty: true } : r;
       }),
     }));
+    scheduleSave(runId);
   },
 
-  markRunSaved(runId, name) {
-    set((s) => ({ runs: s.runs.map((r) => (r.runId === runId ? { ...r, savedTo: name, triageChanged: false } : r)) }));
+  markRunSaved(runId, name, serverName) {
+    set((s) => ({ runs: s.runs.map((r) => (r.runId === runId ? { ...r, savedTo: name, dirty: false, serverName: serverName ?? r.serverName } : r)) }));
   },
 
   setResultsDir(dir, name) {
-    set({ resultsDir: dir, resultsDirName: name });
+    set({ resultsDir: dir, resultsDirName: name, pastRuns: null });
     idbSet("resultsDir", dir);
   },
 
@@ -361,6 +486,12 @@ export const useStore = create<State>((set, get) => ({
   },
 }));
 
+function baseName(path?: string): string | undefined {
+  if (!path) return undefined;
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || undefined;
+}
+
 /** How many test cases a selection would run (dependencies not counted), to pick the capture mode. */
 function plannedCount(suite: Suite, selection?: Selection): number {
   const cases = allCases(suite).filter(({ tc, path }) => !tc.disabled && !path.some((f) => f.disabled));
@@ -371,7 +502,7 @@ function plannedCount(suite: Suite, selection?: Selection): number {
   return cases.filter(({ tc, path }) => ids.has(tc.id) || path.some((f) => folders.has(f.id)) || (tc.tags ?? []).some((t) => tags.has(t))).length;
 }
 
-function patchRun(runId: string, fn: (r: RunView) => RunView) {
+export function patchRun(runId: string, fn: (r: RunView) => RunView) {
   useStore.setState((s) => ({ runs: s.runs.map((r) => (r.runId === runId ? fn(r) : r)) }));
 }
 
@@ -418,7 +549,7 @@ async function poll(runId: string) {
         const c = fin.summary.counts;
         const bad = (c.fail ?? 0) + (c.error ?? 0) + (c.blocked ?? 0);
         const text = fin.summary.error ? `Run could not finish: ${fin.summary.error}`
-          : `Run finished: ${c.pass ?? 0} pass, ${c.fail ?? 0} fail, ${c.error ?? 0} error, ${c.blocked ?? 0} blocked, ${c.skipped ?? 0} skipped`;
+          : `Run finished: ${c.pass ?? 0} passed, ${c.fail ?? 0} failed, ${c.error ?? 0} error, ${c.blocked ?? 0} blocked${c.skipped ? `, ${c.skipped} skipped` : ""}`;
         st.toast(bad || fin.summary.error ? "error" : "ok", text);
         if (st.resultsDir && !fin.resultFile) {
           const name = runFileName(fin);
@@ -426,11 +557,47 @@ async function poll(runId: string) {
             .then(() => useStore.getState().markRunSaved(runId, name))
             .catch(() => st.toast("error", "The results folder needs permission again: use Save result on the run page"));
         }
+        useStore.setState({ pastRuns: null });
       }
       return;
     }
     await new Promise((r) => setTimeout(r, res.events.length ? 250 : 600));
   }
+}
+
+// ---------------------------------------------------------------- saving changes to a result
+
+const saveTimers: Record<string, number> = {};
+
+/** Saves a changed run back where it came from, a moment after the last change, when that needs no prompt. */
+export function scheduleSave(runId: string) {
+  window.clearTimeout(saveTimers[runId]);
+  saveTimers[runId] = window.setTimeout(() => {
+    delete saveTimers[runId];
+    saveQuietly(runId);
+  }, 1200);
+}
+
+export async function saveQuietly(runId: string): Promise<boolean> {
+  const st = useStore.getState();
+  const run = st.runs.find((r) => r.runId === runId);
+  if (!run || !run.dirty || !run.done || run.rerun) return false;
+  try {
+    if (st.serverFile && run.serverName) {
+      await api.saveResult(run.serverName, serializeRun(run));
+      useStore.getState().markRunSaved(runId, run.serverName);
+      return true;
+    }
+    const dir = st.resultsDir as { queryPermission?: (o: { mode: string }) => Promise<string> } | null;
+    if (dir && run.savedTo && dir.queryPermission && (await dir.queryPermission({ mode: "readwrite" })) === "granted") {
+      await writeInFolder(dir, run.savedTo, serializeRun(run));
+      useStore.getState().markRunSaved(runId, run.savedTo);
+      return true;
+    }
+  } catch {
+    /* stays unsaved: Save result shows it */
+  }
+  return false;
 }
 
 export function runFileName(run: RunView): string {

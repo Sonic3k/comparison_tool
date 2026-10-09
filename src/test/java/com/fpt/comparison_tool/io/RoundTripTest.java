@@ -130,4 +130,22 @@ class RoundTripTest {
         assertEquals("{}", steps.get(0).body().json().toString());
         assertEquals("[]", steps.get(1).body().json().toString());
     }
+
+    @Test
+    void runDataKeepsTheLastAttemptOfEachTestCase() {
+        RunHeader h = new RunHeader(RunHeader.SCHEMA, "r2", "RT", null, "dev", null, "2026-10-09T10:00:00+07:00", "all", 3,
+                "failed", "run", 2, "t", List.of("c1", "c2"));
+        CaseResult first = new CaseResult("c1", "C1", "one", null, List.of(), List.of(), "fail", "boom", null, null, 12L,
+                List.of(), null);
+        CaseResult other = new CaseResult("c2", "C2", "two", null, List.of(), List.of(), "pass", null, null, null, 5L,
+                List.of(), null);
+        CaseResult again = new CaseResult("c1", "C1", "one", null, List.of(), List.of(), "pass", null, null, null, 9L,
+                List.of(), null, null, 2);
+        RunData d = new RunData(h, List.of(), List.of(first, other, again), null);
+        assertEquals(2, d.cases().size());
+        assertEquals("c1", d.cases().get(0).caseId());
+        assertEquals("pass", d.cases().get(0).status());
+        assertEquals(2, d.cases().get(0).attempt());
+        assertEquals(0, d.notPassed().size());
+    }
 }

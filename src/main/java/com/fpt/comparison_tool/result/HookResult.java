@@ -13,16 +13,23 @@ import java.util.Map;
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonPropertyOrder({"folderId", "path", "hook", "status", "reason", "startedAt", "durationMs", "steps", "vars"})
+@JsonPropertyOrder({"folderId", "path", "hook", "status", "reason", "startedAt", "durationMs", "attempt", "steps",
+        "disabledSteps", "vars"})
 public record HookResult(String folderId, List<String> path, String hook, String status, String reason,
                          String startedAt, Long durationMs, List<StepResult> steps,
-                         Map<String, Map<String, String>> vars) {
+                         Map<String, Map<String, String>> vars, List<StepRef> disabledSteps, Integer attempt) {
+
+    public HookResult(String folderId, List<String> path, String hook, String status, String reason,
+                      String startedAt, Long durationMs, List<StepResult> steps, Map<String, Map<String, String>> vars) {
+        this(folderId, path, hook, status, reason, startedAt, durationMs, steps, vars, null, null);
+    }
 
     public Status statusEnum() {
         return Status.of(status);
     }
 
     public HookResult withSteps(List<StepResult> newSteps) {
-        return new HookResult(folderId, path, hook, status, reason, startedAt, durationMs, newSteps, vars);
+        return new HookResult(folderId, path, hook, status, reason, startedAt, durationMs, newSteps, vars, disabledSteps,
+                attempt);
     }
 }

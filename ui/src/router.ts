@@ -24,7 +24,7 @@ export function toHash(s: { view: string; sel: Sel; activeRun?: string; runSel: 
       h += `/${enc(s.activeRun)}`;
       if (s.runSel.caseId) h += `/case/${enc(s.runSel.caseId)}`;
       else if (s.runSel.hook) h += `/hook/${enc(s.runSel.hook)}`;
-      if ((s.runSel.caseId || s.runSel.hook) && s.runSel.step !== undefined) h += `/${s.runSel.step}`;
+      if ((s.runSel.caseId || s.runSel.hook) && s.runSel.step !== undefined) h += `/${enc(s.runSel.step)}`;
     }
     return h;
   }
@@ -45,7 +45,7 @@ export function parseHash(hash: string): Route | null {
       r.runSel = {};
       if (parts[2] === "case" && parts[3]) r.runSel.caseId = parts[3];
       if (parts[2] === "hook" && parts[3]) r.runSel.hook = parts[3];
-      if (parts[4] !== undefined && /^\d+$/.test(parts[4])) r.runSel.step = Number(parts[4]);
+      if (parts[4] !== undefined && /^(pre|step|cleanup|setup|teardown):\d+$/.test(parts[4])) r.runSel.step = parts[4];
     }
     return r;
   }

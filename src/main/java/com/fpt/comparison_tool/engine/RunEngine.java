@@ -9,12 +9,15 @@ import com.fpt.comparison_tool.model.Step;
 import com.fpt.comparison_tool.model.Suite;
 import com.fpt.comparison_tool.model.TestCase;
 import com.fpt.comparison_tool.result.CaseResult;
+import com.fpt.comparison_tool.result.DisabledCase;
 import com.fpt.comparison_tool.result.Exchange;
 import com.fpt.comparison_tool.result.HookResult;
 import com.fpt.comparison_tool.result.RunHeader;
 import com.fpt.comparison_tool.result.RunSummary;
 import com.fpt.comparison_tool.result.Status;
+import com.fpt.comparison_tool.result.StepRef;
 import com.fpt.comparison_tool.result.StepResult;
+import com.fpt.comparison_tool.result.VarSource;
 import org.apache.hc.client5.http.cookie.CookieStore;
 
 import java.time.OffsetDateTime;
@@ -25,6 +28,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -83,7 +87,7 @@ public final class RunEngine implements AutoCloseable {
         Map<String, CookieStore> cookies = new LinkedHashMap<>();
         for (Lane lane : lanes) {
             Scope s = rootScope(suite, lane).child("try");
-            s.setAll(vars);
+            s.setAll(vars, new VarSource("send", null, null, null));
             scopes.put(lane.name(), s);
             cookies.put(lane.name(), HttpExecutor.newCookies());
         }
@@ -91,7 +95,7 @@ public final class RunEngine implements AutoCloseable {
         defaults.add(suite.defaultsOrEmpty());
         List<Folder> chain = folderChain(suite.items(), folderId, new ArrayList<>());
         if (chain != null) chain.forEach(f -> defaults.add(f.defaultsOrEmpty()));
-        StepRunner.Context ctx = new StepRunner.Context(suite, lanes, scopes, scopes, scopes, cookies, defaults, Map.of());
+        StepRunner.Context ctx = new StepRunner.Context(suite, lanes, scopes, scopes, scopes, cookies, defaults, Map.of(), "Send");
         return runner.run(step.disabled() == null ? step : withoutDisabled(step), "step", 0, ctx, new RunControl());
     }
 
@@ -111,7 +115,7 @@ public final class RunEngine implements AutoCloseable {
         defaults.add(suite.defaultsOrEmpty());
         List<Folder> chain = folderChain(suite.items(), folderId, new ArrayList<>());
         if (chain != null) chain.forEach(f -> defaults.add(f.defaultsOrEmpty()));
-        StepRunner.Context ctx = new StepRunner.Context(suite, lanes, scopes, scopes, scopes, Map.of(), defaults, Map.of());
+        StepRunner.Context ctx = new StepRunner.Context(suite, lanes, scopes, scopes, scopes, Map.of(), defaults, Map.of(), "Preview");
         List<Preview> out = new ArrayList<>();
         for (Lane lane : lanes) {
             StepRunner.Prepared p = runner.prepare(step, lane, ctx);
@@ -163,7 +167,8 @@ public final class RunEngine implements AutoCloseable {
             Lane base = lanes.stream().filter(Lane::baseline).findFirst().orElse(null);
             this.header = new RunHeader(RunHeader.SCHEMA, runId, suite.name(), req.suiteFile(), target.env().name(),
                     base == null ? null : base.env().name(), now(), req.selection().describe(), concurrency,
-                    req.options().capture(), req.options().hooks(), plan.size(), TOOL, plan.caseIds());
+                    req.options().capture(), req.options().hooks(), plan.size(), TOOL, plan.caseIds(),
+                    disabledCases(plan), startValues(suite, lanes, req.options().variables()), req.options().parent());
         }
 
         RunSummary execute() {
@@ -209,7 +214,9 @@ public final class RunEngine implements AutoCloseable {
             String blocked = null;
             if (RunOptions.HOOKS_REUSE.equals(hooks)) {
                 Map<String, Map<String, String>> saved = req.options().reuse().get(pf.hookKey());
-                if (saved != null) for (Lane lane : lanes) scopes.get(lane.name()).setAll(saved.get(lane.name()));
+                if (saved != null) {
+                    for (Lane lane : lanes) scopes.get(lane.name()).setAll(saved.get(lane.name()), VarSource.reused(owner(pf)));
+                }
             }
             List<Step> setup = Plan.setupOf(suite, pf);
             if (RunOptions.HOOKS_RUN.equals(hooks) && anyActive(setup)) {
@@ -242,14 +249,18 @@ public final class RunEngine implements AutoCloseable {
                 String startedAt = now();
                 long t0 = System.nanoTime();
                 StepRunner.Context ctx = new StepRunner.Context(suite, lanes, scopes, scopes, suiteScopes, cookies(),
-                        pf.defaults, req.options().variables());
+                        pf.defaults, req.options().variables(), owner(pf));
                 List<StepResult> results = new ArrayList<>();
+                List<StepRef> disabledSteps = new ArrayList<>();
                 Status status = Status.PASS;
                 String reason = null;
                 String block = null;
                 for (int i = 0; i < steps.size(); i++) {
                     Step step = steps.get(i);
-                    if (!step.active()) continue;
+                    if (!step.active()) {
+                        disabledSteps.add(new StepRef(hook, i, step.name()));
+                        continue;
+                    }
                     boolean skip = control.hardStopped() || ("setup".equals(hook) && control.stopped());
                     StepResult r = skip ? StepResult.skipped(hook, i, step.name(), "Run stopped")
                             : runner.run(step, hook, i, ctx, control);
@@ -269,7 +280,8 @@ public final class RunEngine implements AutoCloseable {
                 boolean keepBodies = RunOptions.CAPTURE_ALL.equals(req.options().capture())
                         || (status != Status.PASS && !RunOptions.CAPTURE_NONE.equals(req.options().capture()));
                 HookResult hr = new HookResult(pf.root() ? null : pf.id, pf.path, hook, status.value(), reason, startedAt,
-                        (System.nanoTime() - t0) / 1_000_000, capture(results, keepBodies), vars);
+                        (System.nanoTime() - t0) / 1_000_000, capture(results, keepBodies), vars,
+                        disabledSteps.isEmpty() ? null : disabledSteps, null);
                 listener.hook(hr);
                 return block;
             } finally {
@@ -323,9 +335,10 @@ public final class RunEngine implements AutoCloseable {
                 Map<String, Scope> caseScopes = new LinkedHashMap<>();
                 for (Lane lane : lanes) caseScopes.put(lane.name(), folderScopes.get(lane.name()).child("case " + tc.id()));
                 StepRunner.Context ctx = new StepRunner.Context(suite, lanes, caseScopes, folderScopes, suiteScopes,
-                        cookies(), pc.folder.defaults, req.options().variables());
+                        cookies(), pc.folder.defaults, req.options().variables(), tc.key());
 
                 List<StepResult> results = new ArrayList<>();
+                List<StepRef> disabledSteps = new ArrayList<>();
                 String blockReason = null;
                 // a required precondition that does not pass blocks the test case; any other one makes it fail
                 Status preStatus = null;
@@ -333,7 +346,10 @@ public final class RunEngine implements AutoCloseable {
                 List<Step> pre = tc.preconditions();
                 for (int i = 0; i < pre.size(); i++) {
                     Step step = pre.get(i);
-                    if (!step.active()) continue;
+                    if (!step.active()) {
+                        disabledSteps.add(new StepRef("pre", i, step.name()));
+                        continue;
+                    }
                     if (blockReason != null || control.stopped()) {
                         results.add(StepResult.skipped("pre", i, step.name(), blockReason != null ? "Precondition failed" : "Run stopped"));
                         continue;
@@ -361,7 +377,10 @@ public final class RunEngine implements AutoCloseable {
                 List<Step> steps = tc.steps();
                 for (int i = 0; i < steps.size(); i++) {
                     Step step = steps.get(i);
-                    if (!step.active()) continue;
+                    if (!step.active()) {
+                        disabledSteps.add(new StepRef("step", i, step.name()));
+                        continue;
+                    }
                     if (halt == null && control.stopped()) {
                         halt = "Run stopped";
                         stoppedMidway = true;
@@ -386,7 +405,10 @@ public final class RunEngine implements AutoCloseable {
                 List<Step> cleanup = tc.cleanup();
                 for (int i = 0; i < cleanup.size(); i++) {
                     Step step = cleanup.get(i);
-                    if (!step.active()) continue;
+                    if (!step.active()) {
+                        disabledSteps.add(new StepRef("cleanup", i, step.name()));
+                        continue;
+                    }
                     if (control.hardStopped()) {
                         results.add(StepResult.skipped("cleanup", i, step.name(), "Run stopped"));
                         continue;
@@ -418,7 +440,8 @@ public final class RunEngine implements AutoCloseable {
                         || (status != Status.PASS && !RunOptions.CAPTURE_NONE.equals(req.options().capture()));
                 return new CaseResult(tc.id(), tc.key(), tc.name(), pc.folder.root() ? null : pc.folder.id, pc.folder.path,
                         tc.tags(), status.value(), reason, cleanupFailed ? Boolean.TRUE : null, startedAt,
-                        (System.nanoTime() - t0) / 1_000_000, capture(results, keepBodies), null);
+                        (System.nanoTime() - t0) / 1_000_000, capture(results, keepBodies), null,
+                        disabledSteps.isEmpty() ? null : disabledSteps, null);
             } finally {
                 control.leave();
                 permits.release();
@@ -488,11 +511,38 @@ public final class RunEngine implements AutoCloseable {
     /** Suite variables, overridden by the environment's variables ({{baseUrl}} = the environment URL). */
     static Scope rootScope(Suite suite, Lane lane) {
         Scope root = new Scope(null, "suite variables");
-        for (KeyValue v : suite.variables()) if (v.active()) root.set(bare(v.key()), v.value());
+        for (KeyValue v : suite.variables()) if (v.active()) root.set(bare(v.key()), v.value(), VarSource.SUITE);
         Scope env = root.child("environment " + lane.env().name());
-        if (lane.env().baseUrl() != null) env.set("baseUrl", lane.env().baseUrl());
-        for (KeyValue v : lane.env().variables()) if (v.active()) env.set(bare(v.key()), v.value());
+        VarSource fromEnv = VarSource.env(lane.env().name());
+        if (lane.env().baseUrl() != null) env.set("baseUrl", lane.env().baseUrl(), fromEnv);
+        for (KeyValue v : lane.env().variables()) if (v.active()) env.set(bare(v.key()), v.value(), fromEnv);
         return env;
+    }
+
+    /** Per lane, the values a run starts with: suite and environment variables, then the run's own values. */
+    static Map<String, Map<String, String>> startValues(Suite suite, List<Lane> lanes, Map<String, String> overrides) {
+        Map<String, Map<String, String>> out = new LinkedHashMap<>();
+        for (Lane lane : lanes) {
+            Map<String, String> m = new TreeMap<>();
+            for (KeyValue v : suite.variables()) if (v.active()) m.put(bare(v.key()), v.value() == null ? "" : v.value());
+            if (lane.env().baseUrl() != null) m.put("baseUrl", lane.env().baseUrl());
+            for (KeyValue v : lane.env().variables()) if (v.active()) m.put(bare(v.key()), v.value() == null ? "" : v.value());
+            if (overrides != null) m.putAll(overrides);
+            m.replaceAll(VarTrace::masked);
+            out.put(lane.name(), m);
+        }
+        return out;
+    }
+
+    static List<DisabledCase> disabledCases(Plan plan) {
+        if (plan.disabled().isEmpty()) return null;
+        return plan.disabled().stream().map(d -> new DisabledCase(d.tc().id(), d.tc().key(), d.tc().name(), d.folderId(),
+                d.path(), d.position(), d.folder())).toList();
+    }
+
+    /** What the steps of a folder hook belong to, for saved values: the folder path, or Suite. */
+    static String owner(Plan.PFolder pf) {
+        return pf.root() ? "Suite" : String.join(" / ", pf.path);
     }
 
     static String bare(String name) {

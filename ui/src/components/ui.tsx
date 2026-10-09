@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { create } from "zustand";
-import { Ban, Circle, CircleCheck, CircleDashed, CircleX, LoaderCircle, TriangleAlert, X } from "lucide-react";
+import { Ban, Circle, CircleCheck, CircleDashed, CircleMinus, CircleX, LoaderCircle, TriangleAlert, X } from "lucide-react";
 
 // ------------------------------------------------------------------ buttons
 
@@ -32,6 +32,7 @@ export function StatusIcon({ status, size = 15 }: { status?: string; size?: numb
     case "blocked": return <Ban size={size} className="st-blocked" aria-label="blocked" />;
     case "skipped": return <CircleDashed size={size} className="st-skipped" aria-label="skipped" />;
     case "running": return <LoaderCircle size={size} className="st-running spin" aria-label="running" />;
+    case "disabled": return <CircleMinus size={size} className="st-disabled" aria-label="disabled" />;
     default: return <Circle size={size} className="st-queued" aria-label="queued" />;
   }
 }

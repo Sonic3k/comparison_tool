@@ -1,5 +1,5 @@
 import {
-  ChevronDown, CircleAlert, CircleStop, Download, FilePlus, FolderOpen, Info, Keyboard, Moon, Play, Redo2, Replace, Save,
+  ChevronDown, CircleAlert, CircleStop, CornerUpLeft, Download, FilePlus, FolderOpen, Info, Keyboard, Moon, Play, Redo2, Replace, Save,
   SlidersHorizontal, Sun, Undo2, X,
 } from "lucide-react";
 import {
@@ -34,6 +34,7 @@ export function Topbar() {
   const past = useStore((s) => s.past.length);
   const future = useStore((s) => s.future.length);
   const resultsDirName = useStore((s) => s.resultsDirName);
+  const fromResults = useStore((s) => s.fromResults);
   const st = useStore.getState();
   const live = runs.find((r) => r.source === "live" && !r.done);
   const errors = issues.filter((i) => i.level === "error").length;
@@ -123,6 +124,11 @@ export function Topbar() {
           title="Problems found in the suite">{issues.length}</Button>
       ) : suite && notes.length ? (
         <Button variant="ghost" icon={<Info size={15} />} onClick={() => showDialog((c) => <IssuesDialog onClose={c} />)} title="Conversion notes" />
+      ) : null}
+      {view === "edit" && fromResults ? (
+        <button className="back-pill" onClick={() => st.setView("runs")} title={`Back to the results of ${fromResults.label} (Alt+2)`}>
+          <CornerUpLeft size={13} />Back to results
+        </button>
       ) : null}
       <div className="segmented">
         <button className={view === "edit" ? "on" : ""} onClick={() => st.setView("edit")} title="Alt+1">Edit</button>

@@ -1,19 +1,30 @@
 import type { CaseResult, HookResult, RunHeader, RunSummary, StatusValue, StepResult } from "./types";
 
+/**
+ * A run as the UI holds it. cases has the latest result of each test case; history the earlier attempts of the
+ * test cases that were run again inside this run (oldest first). rerun is set while such a repeat is going.
+ */
 export interface RunView {
   runId: string;
   header: RunHeader;
   hooks: HookResult[];
   cases: Record<string, CaseResult>;
+  history: Record<string, CaseResult[]>;
   running: Record<string, true>;
+  pending?: Record<string, true>;
   summary?: RunSummary;
   source: "live" | "file";
   fileName?: string;
+  /** Path of the result file the server writes (server-file mode). */
   resultFile?: string;
+  /** Name of the result file in the server's results folder, used to save changes back. */
+  serverName?: string;
   nextSeq: number;
   done: boolean;
-  triageChanged?: boolean;
+  /** Labels, notes or test cases run again since the result was last saved. */
+  dirty?: boolean;
   savedTo?: string;
+  rerun?: { runId: string; nextSeq: number; caseIds: string[]; startedAt: string; hooks: string };
 }
 
 export const STATUSES: StatusValue[] = ["pass", "fail", "error", "blocked", "skipped"];
@@ -31,11 +42,23 @@ export function hookKey(h: { folderId?: string; hook: string }): string {
   return `hook:${h.folderId ?? "suite"}:${h.hook}`;
 }
 
+/** The latest result of each hook (a test case run again can run its folder's setup again). */
+export function latestHooks(run: RunView): HookResult[] {
+  const m = new Map<string, HookResult>();
+  for (const h of run.hooks) m.set(hookKey(h), h);
+  return [...m.values()];
+}
+
+export function emptyRun(header: RunHeader, extra?: Partial<RunView>): RunView {
+  return { runId: header.runId, header, hooks: [], cases: {}, history: {}, running: {}, source: "live", nextSeq: 0, done: false, ...extra };
+}
+
 export function parseRunFile(text: string, fileName: string): RunView {
   let header: RunHeader | undefined;
   let summary: RunSummary | undefined;
   const hooks: HookResult[] = [];
   const cases: Record<string, CaseResult> = {};
+  const history: Record<string, CaseResult[]> = {};
   text.split(/\r?\n/).forEach((line, i) => {
     if (!line.trim()) return;
     let o: Record<string, unknown>;
@@ -48,30 +71,54 @@ export function parseRunFile(text: string, fileName: string): RunView {
     delete o.kind;
     if (kind === "header") header = o as unknown as RunHeader;
     else if (kind === "hook") hooks.push(o as unknown as HookResult);
-    else if (kind === "case") cases[(o as unknown as CaseResult).caseId] = o as unknown as CaseResult;
-    else if (kind === "summary") summary = o as unknown as RunSummary;
+    else if (kind === "case") {
+      const c = o as unknown as CaseResult;
+      const prev = cases[c.caseId];
+      if (prev) history[c.caseId] = [...(history[c.caseId] ?? []), prev];
+      cases[c.caseId] = c;
+    } else if (kind === "summary") summary = o as unknown as RunSummary;
   });
   if (!header) throw new Error(`${fileName} is not a run file (no header line)`);
-  return { runId: header.runId, header, hooks, cases, running: {}, summary, source: "file", fileName, nextSeq: 0, done: true };
+  return { runId: header.runId, header, hooks, cases, history, running: {}, summary, source: "file", fileName, nextSeq: 0, done: true };
 }
 
+/** The run as a result file: earlier attempts come before the latest one of each test case. */
 export function serializeRun(run: RunView): string {
   const lines: string[] = [JSON.stringify({ kind: "header", ...run.header })];
   for (const h of run.hooks) lines.push(JSON.stringify({ kind: "hook", ...h }));
-  const order = run.header.caseIds ?? Object.keys(run.cases);
-  for (const id of order) if (run.cases[id]) lines.push(JSON.stringify({ kind: "case", ...run.cases[id] }));
-  if (run.summary) lines.push(JSON.stringify({ kind: "summary", ...run.summary }));
+  for (const id of caseOrder(run)) {
+    for (const old of run.history[id] ?? []) lines.push(JSON.stringify({ kind: "case", ...old }));
+    if (run.cases[id]) lines.push(JSON.stringify({ kind: "case", ...run.cases[id] }));
+  }
+  const summary = summaryOf(run);
+  if (summary) lines.push(JSON.stringify({ kind: "summary", ...summary }));
   return lines.join("\n") + "\n";
 }
 
-export function runData(run: RunView) {
-  const order = run.header.caseIds ?? Object.keys(run.cases);
+/** Run data for reports: the latest result of each test case and hook. */
+export function runData(run: RunView, only?: Set<string>) {
   return {
     header: run.header,
-    hooks: run.hooks,
-    cases: order.filter((id) => run.cases[id]).map((id) => run.cases[id]),
-    summary: run.summary,
+    hooks: latestHooks(run),
+    cases: caseOrder(run).filter((id) => run.cases[id] && (!only || only.has(id))).map((id) => run.cases[id]),
+    summary: summaryOf(run),
   };
+}
+
+/** Test case ids in suite order: the header's order, then any result that is not in it. */
+export function caseOrder(run: RunView): string[] {
+  const ids = [...(run.header.caseIds ?? [])];
+  const seen = new Set(ids);
+  for (const id of Object.keys(run.cases)) if (!seen.has(id)) ids.push(id);
+  return ids;
+}
+
+/** The summary with counts that reflect the latest attempts. */
+export function summaryOf(run: RunView): RunSummary | undefined {
+  if (!run.summary) return undefined;
+  const c: Record<string, number> = { pass: 0, fail: 0, error: 0, blocked: 0, skipped: 0 };
+  for (const r of Object.values(run.cases)) c[r.status] = (c[r.status] ?? 0) + 1;
+  return { ...run.summary, total: Object.keys(run.cases).length || run.summary.total, counts: c };
 }
 
 /** The first step that did not pass, for the failure summary of a test case. */
@@ -98,30 +145,12 @@ function shape(text: string): string {
   return text.replace(/"[^"]*"/g, '"…"').replace(/\d+(\.\d+)?/g, "#").slice(0, 160);
 }
 
-export interface Change {
-  caseId: string;
-  kind: "fixed" | "still" | "new" | "same";
-}
-
-/** How each test case moved between two runs. */
-export function compareRuns(older: RunView, newer: RunView): Record<string, Change["kind"]> {
-  const out: Record<string, Change["kind"]> = {};
-  for (const [id, n] of Object.entries(newer.cases)) {
-    const o = older.cases[id];
-    if (!o) continue;
-    const wasOk = o.status === "pass";
-    const isOk = n.status === "pass";
-    out[id] = wasOk && isOk ? "same" : !wasOk && isOk ? "fixed" : wasOk && !isOk ? "new" : "still";
-  }
-  return out;
-}
-
 export function fmtMs(ms?: number): string {
   if (ms === undefined || ms === null) return "";
   if (ms < 1000) return `${ms} ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
   const m = Math.floor(ms / 60000);
-  return `${m}m ${Math.round((ms % 60000) / 1000)}s`;
+  return `${m}m ${String(Math.round((ms % 60000) / 1000)).padStart(2, "0")}s`;
 }
 
 export function fmtTime(iso?: string): string {
@@ -129,6 +158,13 @@ export function fmtTime(iso?: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+export function fmtClock(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function fmtSize(n?: number): string {

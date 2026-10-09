@@ -39,6 +39,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -149,8 +151,12 @@ public class ApiController {
 
     // ---------------------------------------------------------------- runs
 
-    /** Body of POST /runs. */
-    public record StartRun(Suite suite, String env, String baselineEnv, Selection selection, RunOptions options) {
+    /**
+     * Body of POST /runs. persist false keeps the run in memory only: the UI uses it to run test cases again inside
+     * an earlier run, whose result file it then saves itself.
+     */
+    public record StartRun(Suite suite, String env, String baselineEnv, Selection selection, RunOptions options,
+                           Boolean persist) {
     }
 
     @PostMapping("/runs")
@@ -161,7 +167,7 @@ public class ApiController {
         RunOptions opts = body.options() == null ? new RunOptions(null, RunOptions.CAPTURE_ALL, null, null, null, null) : body.options();
         String file = System.getProperty("ct.startup-file");
         RunFile.Writer writer = null;
-        if (file != null) {
+        if (file != null && !Boolean.FALSE.equals(body.persist())) {
             try {
                 Path p = Paths.get(file);
                 String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
@@ -269,6 +275,101 @@ public class ApiController {
         Path p = resultsDir(Paths.get(file)).resolve(name);
         if (!Files.isRegularFile(p)) throw new NotFound("No such result file: " + name);
         return download(Files.readAllBytes(p), name, MediaType.parseMediaType("application/x-ndjson"));
+    }
+
+    /**
+     * Writes a result file in results/ (server-file mode): the run as the UI holds it, with labels, notes and the
+     * test cases run again inside it. The text must be a run file; the name is a plain file name.
+     */
+    @PostMapping(value = "/results/{name}", consumes = {MediaType.TEXT_PLAIN_VALUE, "application/x-ndjson"})
+    public Map<String, Object> saveResult(@PathVariable String name, @RequestBody String text) throws IOException {
+        String file = System.getProperty("ct.startup-file");
+        if (file == null) throw new IllegalArgumentException("The tool was not started with a suite file, so it has no results folder");
+        if (!name.matches("[\\w.\\-]+\\.jsonl")) throw new IllegalArgumentException("Not a result file name: " + name);
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        RunFile.read(new ByteArrayInputStream(bytes));
+        Path dir = resultsDir(Paths.get(file));
+        Files.createDirectories(dir);
+        Path p = dir.resolve(name);
+        Path tmp = p.resolveSibling(p.getFileName() + ".tmp");
+        Files.write(tmp, bytes);
+        try {
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        statusCache.remove(p.toString());
+        return Map.of("path", p.toString(), "name", name);
+    }
+
+    private record Statuses(long size, long modified, Map<String, Object> summary) {
+    }
+
+    private final Map<String, Statuses> statusCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * The outcome of every test case in recent result files (server-file mode), newest first, optionally only runs
+     * of one suite: for "compared with" and the recent-runs dots, without loading whole files in the browser.
+     */
+    @GetMapping("/results/statuses")
+    public List<Map<String, Object>> statuses(@RequestParam(required = false) String suite,
+                                              @RequestParam(defaultValue = "12") int limit) throws IOException {
+        String file = System.getProperty("ct.startup-file");
+        if (file == null) return List.of();
+        Path dir = resultsDir(Paths.get(file));
+        if (!Files.isDirectory(dir)) return List.of();
+        List<Path> files;
+        try (var stream = Files.list(dir)) {
+            files = new ArrayList<>(stream.filter(x -> x.getFileName().toString().endsWith(".jsonl")).toList());
+        }
+        files.sort((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Path p : files) {
+            if (out.size() >= Math.max(1, limit)) break;
+            Map<String, Object> m;
+            try {
+                m = statusesOf(p);
+            } catch (IOException | RuntimeException e) {
+                continue;
+            }
+            if (m == null || (suite != null && !suite.equals(m.get("suite")))) continue;
+            out.add(m);
+        }
+        return out;
+    }
+
+    private Map<String, Object> statusesOf(Path p) throws IOException {
+        long size = Files.size(p);
+        long modified = Files.getLastModifiedTime(p).toMillis();
+        Statuses cached = statusCache.get(p.toString());
+        if (cached != null && cached.size == size && cached.modified == modified) return cached.summary;
+        Map<String, Object> m = new LinkedHashMap<>();
+        Map<String, String> statuses = new LinkedHashMap<>();
+        try (BufferedReader r = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
+            String line;
+            boolean header = false;
+            while ((line = r.readLine()) != null) {
+                if (line.isBlank()) continue;
+                JsonNode n = Json.MAPPER.readTree(line);
+                String kind = n.path("kind").asText("");
+                if (kind.equals("header")) {
+                    header = true;
+                    m.put("name", p.getFileName().toString());
+                    for (String f : List.of("runId", "suite", "env", "baselineEnv", "startedAt", "selection")) {
+                        if (n.hasNonNull(f)) m.put(f, n.get(f).asText());
+                    }
+                } else if (kind.equals("case") && n.hasNonNull("caseId")) {
+                    statuses.put(n.get("caseId").asText(), n.path("status").asText("skipped"));
+                }
+            }
+            if (!header) return null;
+        }
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String st : statuses.values()) counts.merge(st, 1, Integer::sum);
+        m.put("counts", counts);
+        m.put("statuses", statuses);
+        statusCache.put(p.toString(), new Statuses(size, modified, m));
+        return m;
     }
 
     /** Writes a run back to its result file (server-file mode), for example after triage labels were added. */

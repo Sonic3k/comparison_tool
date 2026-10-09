@@ -1,5 +1,7 @@
 package com.fpt.comparison_tool.engine;
 
+import com.fpt.comparison_tool.result.VarSource;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,6 +15,11 @@ public final class Scope {
     private final Scope parent;
     private final String label;
     private final Map<String, String> vars = new ConcurrentHashMap<>();
+    private final Map<String, VarSource> origins = new ConcurrentHashMap<>();
+
+    /** A value found by {@link #find}: where it was set (may be null) and the label of the layer that holds it. */
+    public record Found(String value, VarSource from, String layer) {
+    }
 
     public Scope(Scope parent, String label) {
         this.parent = parent;
@@ -31,13 +38,31 @@ public final class Scope {
         return null;
     }
 
+    public Found find(String name) {
+        for (Scope s = this; s != null; s = s.parent) {
+            String v = s.vars.get(name);
+            if (v != null) return new Found(v, s.origins.get(name), s.label);
+        }
+        return null;
+    }
+
     public void set(String name, String value) {
+        set(name, value, null);
+    }
+
+    public void set(String name, String value, VarSource from) {
         if (name == null || name.isBlank() || value == null) return;
         vars.put(name, value);
+        if (from != null) origins.put(name, from);
+        else origins.remove(name);
     }
 
     public void setAll(Map<String, String> values) {
         if (values != null) values.forEach(this::set);
+    }
+
+    public void setAll(Map<String, String> values, VarSource from) {
+        if (values != null) values.forEach((k, v) -> set(k, v, from));
     }
 
     public Map<String, String> local() {

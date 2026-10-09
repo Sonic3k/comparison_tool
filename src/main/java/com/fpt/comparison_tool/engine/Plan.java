@@ -82,16 +82,29 @@ public final class Plan {
         }
     }
 
+    /**
+     * A test case of the selection's scope that is not planned because it, or a folder above it, is disabled.
+     * position counts the planned test cases before it in suite order; folder names the disabled folder, if any.
+     */
+    public record Disabled(TestCase tc, List<String> path, String folderId, int position, String folder) {
+    }
+
     final PFolder root;
     final List<PCase> cases;
+    final List<Disabled> disabled;
 
-    private Plan(PFolder root, List<PCase> cases) {
+    private Plan(PFolder root, List<PCase> cases, List<Disabled> disabled) {
         this.root = root;
         this.cases = cases;
+        this.disabled = disabled;
     }
 
     public List<String> caseIds() {
         return cases.stream().map(c -> c.tc.id()).toList();
+    }
+
+    public List<Disabled> disabled() {
+        return disabled;
     }
 
     public int size() {
@@ -120,14 +133,14 @@ public final class Plan {
         collect(suite.items(), new ArrayList<>(), true, entries, folderChains);
 
         Set<Entry> selected = new LinkedHashSet<>();
+        Set<String> tags = lower(selection.tags());
+        Set<String> folderIds = new HashSet<>(selection.folderIds());
+        Set<String> folderPaths = lower(selection.folderPaths());
         if (selection.everything()) {
             for (Entry e : entries) if (e.effectiveActive) selected.add(e);
         } else {
             Set<String> ids = new HashSet<>(selection.caseIds());
             Set<String> keys = lower(selection.caseKeys());
-            Set<String> tags = lower(selection.tags());
-            Set<String> folderIds = new HashSet<>(selection.folderIds());
-            Set<String> folderPaths = lower(selection.folderPaths());
             for (Entry e : entries) {
                 if (ids.contains(e.tc.id()) || keys.contains(e.tc.key().toLowerCase(Locale.ROOT))) {
                     selected.add(e);
@@ -200,7 +213,32 @@ public final class Plan {
             if (pc == null) continue;
             for (Entry dep : d.getValue()) pc.deps.add(planned.get(dep));
         }
-        return new Plan(root, List.copyOf(ordered));
+
+        // disabled test cases of the scope, so results can list them where they sit
+        List<Disabled> disabled = new ArrayList<>();
+        int before = 0;
+        for (Entry e : entries) {
+            if (selected.contains(e)) {
+                before++;
+                continue;
+            }
+            int hit = folderHit(e.chain, folderIds, folderPaths);
+            boolean inScope = selection.everything() || hit >= 0
+                    || (!tags.isEmpty() && e.tc.tags().stream().anyMatch(t -> tags.contains(t.toLowerCase(Locale.ROOT))));
+            if (!inScope) continue;
+            String off = null;
+            for (int i = Math.max(0, hit + 1); i < e.chain.size(); i++) {
+                if (!e.chain.get(i).active()) {
+                    off = e.chain.get(i).name();
+                    break;
+                }
+            }
+            if (off == null && e.tc.active()) continue;
+            List<String> path = e.chain.stream().map(Folder::name).toList();
+            String folderId = e.chain.isEmpty() ? null : e.chain.get(e.chain.size() - 1).id();
+            disabled.add(new Disabled(e.tc, path, folderId, before, off));
+        }
+        return new Plan(root, List.copyOf(ordered), List.copyOf(disabled));
     }
 
     /** Test cases of a folder in an order where every dependency comes first, otherwise suite order. */

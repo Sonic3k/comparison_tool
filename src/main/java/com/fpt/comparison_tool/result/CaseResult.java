@@ -10,10 +10,17 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonPropertyOrder({"caseId", "key", "name", "folderId", "path", "tags", "status", "reason", "cleanupFailed",
-        "startedAt", "durationMs", "steps", "triage"})
+        "startedAt", "durationMs", "attempt", "steps", "disabledSteps", "triage"})
 public record CaseResult(String caseId, String key, String name, String folderId, List<String> path, List<String> tags,
                          String status, String reason, Boolean cleanupFailed, String startedAt, Long durationMs,
-                         List<StepResult> steps, Triage triage) {
+                         List<StepResult> steps, Triage triage, List<StepRef> disabledSteps, Integer attempt) {
+
+    public CaseResult(String caseId, String key, String name, String folderId, List<String> path, List<String> tags,
+                      String status, String reason, Boolean cleanupFailed, String startedAt, Long durationMs,
+                      List<StepResult> steps, Triage triage) {
+        this(caseId, key, name, folderId, path, tags, status, reason, cleanupFailed, startedAt, durationMs, steps, triage,
+                null, null);
+    }
 
     public Status statusEnum() {
         return Status.of(status);
@@ -21,12 +28,12 @@ public record CaseResult(String caseId, String key, String name, String folderId
 
     public CaseResult withSteps(List<StepResult> newSteps) {
         return new CaseResult(caseId, key, name, folderId, path, tags, status, reason, cleanupFailed, startedAt,
-                durationMs, newSteps, triage);
+                durationMs, newSteps, triage, disabledSteps, attempt);
     }
 
     public CaseResult withTriage(Triage t) {
         return new CaseResult(caseId, key, name, folderId, path, tags, status, reason, cleanupFailed, startedAt,
-                durationMs, steps, t);
+                durationMs, steps, t, disabledSteps, attempt);
     }
 
     /** Review note added in the UI: label is one of defect, test, requirement, environment, known. */

@@ -19,7 +19,7 @@ import java.util.Map;
 @Component
 public class RunStore {
 
-    private static final int KEEP = 8;
+    private static final int KEEP = 24;
 
     /** One event of a run: seq orders them; type is started, caseStarted, hook, case or finished. */
     public record Event(int seq, String type, Object data) {
