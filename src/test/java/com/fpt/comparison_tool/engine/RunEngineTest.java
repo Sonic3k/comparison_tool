@@ -279,4 +279,46 @@ class RunEngineTest {
         assertEquals(Map.of("A", "pass", "B", "pass"),
                 c.cases.stream().collect(Collectors.toMap(CaseResult::key, CaseResult::status)));
     }
+
+    @Test
+    void onlyRequiredPreconditionsBlock() {
+        String items = """
+                [{"type": "folder", "name": "F", "items": [
+                  {"type": "case", "key": "R", "preconditions": [{"url": "/nothing-here", "options": {"required": true}}],
+                   "steps": [{"url": "/slow"}]},
+                  {"type": "case", "key": "N", "preconditions": [{"url": "/nothing-here"}], "steps": [{"url": "/slow"}]}
+                ]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        assertEquals(Status.BLOCKED, c.get("R").statusEnum());
+        assertEquals("skipped", c.get("R").steps().get(1).status());
+        CaseResult n = c.get("N");
+        assertEquals(Status.FAIL, n.statusEnum());
+        assertTrue(n.reason().startsWith("Precondition 1"), n.reason());
+        assertEquals("pass", n.steps().get(1).status());
+    }
+
+    @Test
+    void stepIndexesStayThoseOfTheEditorWhenStepsAreDisabled() {
+        String items = """
+                [{"type": "case", "key": "D", "steps": [{"url": "/slow", "disabled": true}, {"url": "/nothing-here"}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        CaseResult d = c.get("D");
+        assertEquals(1, d.steps().size());
+        assertEquals(1, d.steps().get(0).index());
+        assertTrue(d.reason().startsWith("Step 2"), d.reason());
+    }
+
+    @Test
+    void compareRunsBothLanesAtTheSameTime() {
+        String items = """
+                [{"type": "case", "key": "P", "steps": [{"url": "/slow", "expect": {"status": "200"}}]}]""";
+        Collector c = new Collector();
+        engine.run(new RunRequest(suite(items, null), "target", "base", null, RunOptions.defaults(), null), c);
+        StepResult s = c.get("P").steps().get(0);
+        assertNotNull(s.baseline());
+        long both = s.target().timeMs() + s.baseline().timeMs();
+        assertTrue(s.durationMs() < both, "step took " + s.durationMs() + " ms, the two calls " + both + " ms");
+    }
 }

@@ -22,8 +22,15 @@ public class ComparisonToolApplication {
             System.exit(new Cli(System.out, System.err).execute(args));
         }
         List<String> rest = new ArrayList<>();
-        for (String a : args) {
-            if (!a.startsWith("-") && System.getProperty("ct.startup-file") == null) {
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if (a.equals("--port") && i + 1 < args.length) {
+                System.setProperty("server.port", args[++i]);
+            } else if (a.startsWith("--port=")) {
+                System.setProperty("server.port", a.substring(7));
+            } else if (a.equals("--no-browser")) {
+                System.setProperty("ct.open-browser", "false");
+            } else if (!a.startsWith("-") && System.getProperty("ct.startup-file") == null) {
                 Path p = Paths.get(a).toAbsolutePath();
                 if (!Files.isRegularFile(p)) {
                     System.err.println("Suite file not found: " + p);

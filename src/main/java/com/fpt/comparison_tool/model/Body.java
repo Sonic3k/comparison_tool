@@ -16,7 +16,7 @@ import java.util.Locale;
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonPropertyOrder({"type", "json", "raw", "form"})
-public record Body(String type, JsonNode json, String raw, List<KeyValue> form) {
+public record Body(String type, @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode json, String raw, List<KeyValue> form) {
 
     public static final String JSON = "json";
     public static final String FORM = "form";

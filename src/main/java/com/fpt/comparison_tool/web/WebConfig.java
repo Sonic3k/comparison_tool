@@ -85,5 +85,26 @@ public class WebConfig {
         if (file != null) System.out.println("Suite: " + file + " (Save writes back to this file, results go to results/ next to it)");
         System.out.println();
         Json.MAPPER.getFactory();
+        if (shouldOpenBrowser()) openBrowser("http://localhost:" + port + "/");
+    }
+
+    /** Opens the default browser on a desktop machine; never on a pod (PORT or Kubernetes variables set). */
+    private static boolean shouldOpenBrowser() {
+        String flag = System.getProperty("ct.open-browser");
+        if (flag != null) return Boolean.parseBoolean(flag);
+        if (System.getenv("PORT") != null || System.getenv("KUBERNETES_SERVICE_HOST") != null) return false;
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        return os.contains("win") || os.contains("mac");
+    }
+
+    private static void openBrowser(String url) {
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        java.util.List<String> cmd = os.contains("win") ? java.util.List.of("rundll32", "url.dll,FileProtocolHandler", url)
+                : os.contains("mac") ? java.util.List.of("open", url) : java.util.List.of("xdg-open", url);
+        try {
+            new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        } catch (java.io.IOException | RuntimeException ignored) {
+            // no browser available: the URL is printed above
+        }
     }
 }

@@ -88,29 +88,39 @@ final class StepRunner {
         List<String> missed = new ArrayList<>();
         String error = null;
 
-        for (Lane lane : ctx.lanes()) {
-            Prepared p = prepare(step, lane, ctx);
-            if (p.error != null || !p.unresolved.isEmpty()) {
-                String msg = p.error != null ? p.error : unresolvedMessage(p.unresolved);
-                exchanges.put(lane.name(), new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
-                        null, null, null, null, null, null, null, msg));
-                if (error == null) error = laneLabel(ctx, lane) + msg;
-                continue;
+        List<Lane> lanes = ctx.lanes();
+        LaneCall[] calls = new LaneCall[lanes.size()];
+        boolean together = lanes.size() > 1 && lanes.stream().map(l -> l.env().name()).distinct().count() == lanes.size();
+        if (together) {
+            // baseline and target are different systems: call them at the same time
+            Thread[] threads = new Thread[lanes.size()];
+            for (int i = 0; i < lanes.size(); i++) {
+                int k = i;
+                threads[i] = Thread.ofVirtual().name("lane-" + lanes.get(k).name()).start(() -> calls[k] = callLane(step, lanes.get(k), ctx));
             }
-            try {
-                HttpExecutor.Reply reply = http.send(new HttpExecutor.Call(p.method, p.url, p.headers, p.body, p.timeoutMs),
-                        ctx.cookies().get(lane.name()));
-                replies.put(lane.name(), reply);
-                exchanges.put(lane.name(), new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
-                        reply.status(), reply.timeMs(), toList(reply.headers()), reply.contentType(), reply.size(),
-                        reply.binary() ? "<binary content, " + reply.size() + " bytes>" : reply.body(), null, null));
-                extract(step, lane, reply, ctx, extracted, missed);
-            } catch (Exception e) {
-                String msg = HttpExecutor.describe(e);
-                exchanges.put(lane.name(), new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
-                        null, null, null, null, null, null, null, msg));
-                if (error == null) error = laneLabel(ctx, lane) + msg;
+            boolean interrupted = false;
+            for (Thread t : threads) {
+                while (true) {
+                    try {
+                        t.join();
+                        break;
+                    } catch (InterruptedException e) {
+                        interrupted = true;
+                    }
+                }
             }
+            if (interrupted) Thread.currentThread().interrupt();
+        } else {
+            for (int i = 0; i < lanes.size(); i++) calls[i] = callLane(step, lanes.get(i), ctx);
+        }
+        for (int i = 0; i < lanes.size(); i++) {
+            Lane lane = lanes.get(i);
+            LaneCall c = calls[i];
+            exchanges.put(lane.name(), c.exchange);
+            if (c.reply != null) replies.put(lane.name(), c.reply);
+            extracted.putAll(c.extracted);
+            missed.addAll(c.missed);
+            if (c.error != null && error == null) error = laneLabel(ctx, lane) + c.error;
         }
         if (error != null) {
             return new Attempt(Status.ERROR, error, List.of(), List.of(), extracted, missed, exchanges);
@@ -155,6 +165,42 @@ final class StepRunner {
             return new Attempt(Status.FAIL, reason, assertions, diffs, extracted, missed, exchanges);
         }
         return new Attempt(Status.PASS, null, assertions, diffs, extracted, missed, exchanges);
+    }
+
+    /** What one lane of a step produced. */
+    private record LaneCall(Exchange exchange, HttpExecutor.Reply reply, String error, Map<String, String> extracted,
+                            List<String> missed) {
+    }
+
+    private LaneCall callLane(Step step, Lane lane, Context ctx) {
+        Map<String, String> extracted = new LinkedHashMap<>();
+        List<String> missed = new ArrayList<>();
+        Prepared p;
+        try {
+            p = prepare(step, lane, ctx);
+        } catch (RuntimeException e) {
+            String msg = HttpExecutor.describe(e);
+            return new LaneCall(new Exchange(lane.env().name(), step.method(), step.url(), null, null, null, null, null, null,
+                    null, null, null, msg), null, msg, extracted, missed);
+        }
+        if (p.error != null || !p.unresolved.isEmpty()) {
+            String msg = p.error != null ? p.error : unresolvedMessage(p.unresolved);
+            return new LaneCall(new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
+                    null, null, null, null, null, null, null, msg), null, msg, extracted, missed);
+        }
+        try {
+            HttpExecutor.Reply reply = http.send(new HttpExecutor.Call(p.method, p.url, p.headers, p.body, p.timeoutMs),
+                    ctx.cookies().get(lane.name()));
+            Exchange ex = new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
+                    reply.status(), reply.timeMs(), toList(reply.headers()), reply.contentType(), reply.size(),
+                    reply.binary() ? "<binary content, " + reply.size() + " bytes>" : reply.body(), null, null);
+            extract(step, lane, reply, ctx, extracted, missed);
+            return new LaneCall(ex, reply, null, extracted, missed);
+        } catch (Exception e) {
+            String msg = HttpExecutor.describe(e);
+            return new LaneCall(new Exchange(lane.env().name(), p.method, p.url, mask(p.headers), p.body,
+                    null, null, null, null, null, null, null, msg), null, msg, extracted, missed);
+        }
     }
 
     // ---------------------------------------------------------------- request preparation

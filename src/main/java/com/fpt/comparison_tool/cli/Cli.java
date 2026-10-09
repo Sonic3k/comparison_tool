@@ -289,7 +289,10 @@ public final class Cli {
                 Comparison Tool 2
 
                   java -jar comparison-tool.jar                     start the UI on http://localhost:8080
-                  java -jar comparison-tool.jar <suite.json>        start the UI with this suite open (Save writes back)
+                  java -jar comparison-tool.jar <suite.json>        start the UI with this suite open (Save writes back,
+                                                                    run results go to results/ next to the suite)
+                      --port N             another port than 8080
+                      --no-browser         do not open the browser (it opens by itself on Windows and macOS)
 
                   java -jar comparison-tool.jar run <suite> [options]
                       --env NAME           environment under test (default: the suite setting, else the first)
@@ -331,6 +334,7 @@ public final class Cli {
     static final class Args {
         final List<String> positional = new ArrayList<>();
         final Map<String, List<String>> options = new LinkedHashMap<>();
+        /** Options without a value; --junit and --excel take a file name everywhere except in run (there: --junit=FILE). */
         private static final List<String> FLAGS = List.of("junit", "excel", "quiet");
 
         Args(String[] args) {
@@ -343,7 +347,7 @@ public final class Cli {
                     if (eq > 0) {
                         value = name.substring(eq + 1);
                         name = name.substring(0, eq);
-                    } else if (!FLAGS.contains(name) && i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                    } else if (!isFlag(name, args[0]) && i + 1 < args.length && !args[i + 1].startsWith("--")) {
                         value = args[++i];
                     }
                     options.computeIfAbsent(name, k -> new ArrayList<>()).add(value == null ? "true" : value);
@@ -351,6 +355,10 @@ public final class Cli {
                     positional.add(s);
                 }
             }
+        }
+
+        private static boolean isFlag(String name, String command) {
+            return name.equals("quiet") || (FLAGS.contains(name) && "run".equals(command));
         }
 
         Path file(int index, String what) {

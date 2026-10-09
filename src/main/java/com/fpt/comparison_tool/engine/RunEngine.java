@@ -211,8 +211,8 @@ public final class RunEngine implements AutoCloseable {
                 Map<String, Map<String, String>> saved = req.options().reuse().get(pf.hookKey());
                 if (saved != null) for (Lane lane : lanes) scopes.get(lane.name()).setAll(saved.get(lane.name()));
             }
-            List<Step> setup = active(Plan.setupOf(suite, pf));
-            if (RunOptions.HOOKS_RUN.equals(hooks) && !setup.isEmpty()) {
+            List<Step> setup = Plan.setupOf(suite, pf);
+            if (RunOptions.HOOKS_RUN.equals(hooks) && anyActive(setup)) {
                 blocked = runHook(pf, "setup", setup, scopes);
             }
             if (blocked != null) {
@@ -229,8 +229,8 @@ public final class RunEngine implements AutoCloseable {
                     for (Plan.PFolder child : pf.folders) runFolder(child, scopes);
                 }
             }
-            List<Step> teardown = active(Plan.teardownOf(suite, pf));
-            if (RunOptions.HOOKS_RUN.equals(hooks) && !teardown.isEmpty() && !control.hardStopped()) {
+            List<Step> teardown = Plan.teardownOf(suite, pf);
+            if (RunOptions.HOOKS_RUN.equals(hooks) && anyActive(teardown) && !control.hardStopped()) {
                 runHook(pf, "teardown", teardown, scopes);
             }
         }
@@ -249,6 +249,7 @@ public final class RunEngine implements AutoCloseable {
                 String block = null;
                 for (int i = 0; i < steps.size(); i++) {
                     Step step = steps.get(i);
+                    if (!step.active()) continue;
                     boolean skip = control.hardStopped() || ("setup".equals(hook) && control.stopped());
                     StepResult r = skip ? StepResult.skipped(hook, i, step.name(), "Run stopped")
                             : runner.run(step, hook, i, ctx, control);
@@ -326,17 +327,29 @@ public final class RunEngine implements AutoCloseable {
 
                 List<StepResult> results = new ArrayList<>();
                 String blockReason = null;
-                List<Step> pre = active(tc.preconditions());
+                // a required precondition that does not pass blocks the test case; any other one makes it fail
+                Status preStatus = null;
+                String preReason = null;
+                List<Step> pre = tc.preconditions();
                 for (int i = 0; i < pre.size(); i++) {
                     Step step = pre.get(i);
+                    if (!step.active()) continue;
                     if (blockReason != null || control.stopped()) {
                         results.add(StepResult.skipped("pre", i, step.name(), blockReason != null ? "Precondition failed" : "Run stopped"));
                         continue;
                     }
                     StepResult r = runner.run(step, "pre", i, ctx, control);
                     results.add(r);
-                    if (r.statusEnum() != Status.PASS) {
-                        blockReason = "Precondition " + (i + 1) + " '" + step.name() + "': " + r.reason();
+                    Status ps = r.statusEnum();
+                    if (ps != Status.PASS && ps != Status.SKIPPED) {
+                        String why = "Precondition " + (i + 1) + " '" + step.name() + "': " + r.reason();
+                        if (step.optionsOrNone().requiredOn()) {
+                            blockReason = why;
+                        } else {
+                            preStatus = preStatus == null ? Status.FAIL : preStatus;
+                            if (ps == Status.ERROR) preStatus = Status.worst(preStatus, Status.ERROR);
+                            if (preReason == null) preReason = why;
+                        }
                     }
                 }
 
@@ -345,9 +358,10 @@ public final class RunEngine implements AutoCloseable {
                 String halt = blockReason != null ? "Precondition failed" : null;
                 boolean anyRun = false;
                 boolean stoppedMidway = false;
-                List<Step> steps = active(tc.steps());
+                List<Step> steps = tc.steps();
                 for (int i = 0; i < steps.size(); i++) {
                     Step step = steps.get(i);
+                    if (!step.active()) continue;
                     if (halt == null && control.stopped()) {
                         halt = "Run stopped";
                         stoppedMidway = true;
@@ -369,9 +383,10 @@ public final class RunEngine implements AutoCloseable {
                 }
 
                 boolean cleanupFailed = false;
-                List<Step> cleanup = active(tc.cleanup());
+                List<Step> cleanup = tc.cleanup();
                 for (int i = 0; i < cleanup.size(); i++) {
                     Step step = cleanup.get(i);
+                    if (!step.active()) continue;
                     if (control.hardStopped()) {
                         results.add(StepResult.skipped("cleanup", i, step.name(), "Run stopped"));
                         continue;
@@ -381,6 +396,10 @@ public final class RunEngine implements AutoCloseable {
                     if (r.statusEnum() != Status.PASS) cleanupFailed = true;
                 }
 
+                if (blockReason == null && preStatus != null && !stoppedMidway) {
+                    status = status == null ? preStatus : Status.worst(status, preStatus);
+                    if (reason == null) reason = preReason;
+                }
                 if (blockReason != null) {
                     status = Status.BLOCKED;
                     reason = blockReason;
@@ -482,8 +501,8 @@ public final class RunEngine implements AutoCloseable {
         return n.trim();
     }
 
-    private static List<Step> active(List<Step> steps) {
-        return steps.stream().filter(Step::active).toList();
+    private static boolean anyActive(List<Step> steps) {
+        return steps.stream().anyMatch(Step::active);
     }
 
     private static String where(Plan.PFolder pf) {

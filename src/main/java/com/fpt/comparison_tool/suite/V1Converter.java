@@ -274,6 +274,7 @@ public final class V1Converter {
     }
 
     private static void analyseFolder(WFolder f, Set<String> envVars, Set<String> suiteSetupVars, Notes notes) {
+        inlineInterleaved(f, notes);
         Set<String> base = new HashSet<>(envVars);
         base.addAll(suiteSetupVars);
         Set<String> available = new HashSet<>(base);
@@ -330,6 +331,74 @@ public final class V1Converter {
         for (WFolder sub : f.subfolders) {
             Set<String> subAvailable = new HashSet<>(available);
             place(sub, deps, subAvailable, notes);
+        }
+        if (!f.subfolders.isEmpty()) parentTeardownExports(f, available, notes);
+    }
+
+    /**
+     * 1.x ran requests in file order, so a SETUP/TEARDOWN case listed between two requests of one test case ran in the
+     * middle of it (for example create, delete-all, then search expecting nothing). Such helpers become steps of that
+     * test case, in their original place.
+     */
+    private static void inlineInterleaved(WFolder f, Notes notes) {
+        List<WCase> real = f.cases.stream().filter(c -> !c.helper()).toList();
+        for (java.util.Iterator<WCase> it = f.cases.iterator(); it.hasNext(); ) {
+            WCase h = it.next();
+            if (!h.helper() || h.steps.isEmpty()) continue;
+            int a = h.first();
+            int b = h.last();
+            WCase host = null;
+            for (WCase c : real) {
+                if (c.first() < a && c.last() > b && (host == null || c.last() - c.first() < host.last() - host.first())) host = c;
+            }
+            if (host == null) continue;
+            host.steps.addAll(h.steps);
+            host.steps.sort(java.util.Comparator.comparingInt(x -> x.position));
+            it.remove();
+            notes.count("SETUP/TEARDOWN test cases kept as steps of the test case they ran in the middle of");
+        }
+    }
+
+    /**
+     * The teardown of a folder that was split into screen sub-folders reads values the sub-folders produce. A value saved
+     * with folder scope stays in its sub-folder, so these are saved for the whole run instead (1.x kept them global).
+     */
+    private static void parentTeardownExports(WFolder f, Set<String> available, Notes notes) {
+        Set<String> uses = new LinkedHashSet<>();
+        for (WStep s : f.teardown) uses.addAll(s.uses);
+        uses.removeAll(available);
+        for (WCase c : f.cases) for (WStep s : c.steps) uses.removeAll(s.extracts);
+        for (String v : uses) {
+            boolean found = false;
+            for (WFolder sub : f.subfolders) {
+                for (WCase c : sub.cases) {
+                    for (WStep s : c.steps) {
+                        if (s.extracts.contains(v)) {
+                            c.exports.put(v, Extract.SUITE);
+                            found = true;
+                        }
+                    }
+                    for (WStep s : c.preconditions) {
+                        if (s.extracts.contains(v)) {
+                            c.movedExports.put(v, Extract.SUITE);
+                            found = true;
+                        }
+                    }
+                    for (WStep s : c.cleanup) {
+                        if (s.extracts.contains(v)) {
+                            c.movedExports.put(v, Extract.SUITE);
+                            found = true;
+                        }
+                    }
+                }
+                for (WStep s : sub.setup) {
+                    if (s.extracts.contains(v)) {
+                        s.step = withExtractScope(s.step, v, Extract.SUITE);
+                        found = true;
+                    }
+                }
+            }
+            if (found) notes.count("values shared with the teardown of the parent folder");
         }
     }
 

@@ -241,6 +241,55 @@ public class ApiController {
                 + ".run.jsonl", MediaType.parseMediaType("application/x-ndjson"));
     }
 
+    /** Result files in results/ next to the startup suite, newest first (server-file mode). */
+    @GetMapping("/results")
+    public List<Map<String, Object>> results() throws IOException {
+        String file = System.getProperty("ct.startup-file");
+        if (file == null) return List.of();
+        Path dir = resultsDir(Paths.get(file));
+        if (!Files.isDirectory(dir)) return List.of();
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (var stream = Files.list(dir)) {
+            for (Path p : stream.filter(x -> x.getFileName().toString().endsWith(".jsonl")).toList()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", p.getFileName().toString());
+                m.put("size", Files.size(p));
+                m.put("modified", Files.getLastModifiedTime(p).toInstant().toString());
+                out.add(m);
+            }
+        }
+        out.sort((a, b) -> ((String) b.get("modified")).compareTo((String) a.get("modified")));
+        return out;
+    }
+
+    @GetMapping("/results/{name}")
+    public ResponseEntity<byte[]> result(@PathVariable String name) throws IOException {
+        String file = System.getProperty("ct.startup-file");
+        if (file == null || !name.matches("[\\w.\\-]+\\.jsonl")) throw new NotFound("No such result file");
+        Path p = resultsDir(Paths.get(file)).resolve(name);
+        if (!Files.isRegularFile(p)) throw new NotFound("No such result file: " + name);
+        return download(Files.readAllBytes(p), name, MediaType.parseMediaType("application/x-ndjson"));
+    }
+
+    /** Writes a run back to its result file (server-file mode), for example after triage labels were added. */
+    @PostMapping("/runs/{id}/save")
+    public Map<String, Object> saveRun(@PathVariable String id, @RequestBody RunData data) throws IOException {
+        RunStore.Live l = live(id);
+        if (l.resultFile == null) throw new IllegalArgumentException("This run has no result file on the server");
+        if (!l.done()) throw new IllegalArgumentException("The run is still going; save it when it has finished");
+        Path p = Paths.get(l.resultFile);
+        Path tmp = p.resolveSibling(p.getFileName() + ".tmp");
+        try (var os = Files.newOutputStream(tmp)) {
+            RunFile.write(data, os);
+        }
+        try {
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        return Map.of("path", p.toString());
+    }
+
     @PostMapping("/report")
     public ResponseEntity<byte[]> report(@RequestBody RunData data, @RequestParam String format) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();

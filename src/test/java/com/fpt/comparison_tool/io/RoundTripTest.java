@@ -117,4 +117,17 @@ class RoundTripTest {
         assertTrue(names.stream().anyMatch(n -> n.startsWith("01 F1/02 Sub/01 C2/")), names.toString());
         assertTrue(names.stream().anyMatch(n -> n.contains("C1 one/")), names.toString());
     }
+
+    @Test
+    void emptyJsonBodyIsKept() {
+        String json = """
+                {"name": "E", "environments": [{"name": "e", "baseUrl": "http://x"}],
+                 "items": [{"type": "case", "key": "K", "steps": [{"method": "POST", "url": "/s", "body": {"type": "json", "json": {}}},
+                                                                   {"method": "POST", "url": "/t", "body": {"type": "json", "json": []}}]}]}""";
+        Suite s = SuiteJson.parse(json).suite();
+        Suite back = SuiteJson.parse(SuiteJson.write(s)).suite();
+        var steps = ((com.fpt.comparison_tool.model.TestCase) back.items().get(0)).steps();
+        assertEquals("{}", steps.get(0).body().json().toString());
+        assertEquals("[]", steps.get(1).body().json().toString());
+    }
 }

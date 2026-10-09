@@ -355,7 +355,7 @@ public final class ExcelSuite {
                     {"Expected Status", "200, 2xx or a list such as 200,404. Without status and assertions the step needs a status below 400"},
                     {"Retry", "times x interval ms, e.g. 3 x 1000: repeat the step until it passes"},
                     {"Compare", "N keeps the step out of the baseline/target diff of a compare run"},
-                    {"Required", "Y on a setup step blocks the folder's test cases when the step does not pass"},
+                    {"Required", "Y on a setup step blocks the folder's test cases when it does not pass; Y on a precondition blocks its test case"},
                     {"Case Id / Folder Id", "Keep them when editing so results stay linked; leave empty for new rows"},
             };
             int i = 1;

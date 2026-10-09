@@ -8,6 +8,17 @@ import java.util.Map;
 /** A whole run: header, hook results, test case results and the summary (null while running). */
 public record RunData(RunHeader header, List<HookResult> hooks, List<CaseResult> cases, RunSummary summary) {
 
+    /** Test cases finish in any order when they run in parallel; reports list them in suite order. */
+    public RunData {
+        if (header != null && header.caseIds() != null && !header.caseIds().isEmpty() && cases != null && cases.size() > 1) {
+            Map<String, Integer> index = new java.util.HashMap<>();
+            for (int i = 0; i < header.caseIds().size(); i++) index.putIfAbsent(header.caseIds().get(i), i);
+            List<CaseResult> sorted = new ArrayList<>(cases);
+            sorted.sort(java.util.Comparator.comparingInt(c -> index.getOrDefault(c.caseId(), Integer.MAX_VALUE)));
+            cases = sorted;
+        }
+    }
+
     public Map<String, Integer> counts() {
         Map<String, Integer> c = new LinkedHashMap<>();
         for (Status s : Status.values()) c.put(s.value(), 0);
