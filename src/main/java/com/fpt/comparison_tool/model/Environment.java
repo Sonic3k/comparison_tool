@@ -1,56 +1,22 @@
 package com.fpt.comparison_tool.model;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
-import java.util.ArrayList;
 import java.util.List;
 
-public class Environment {
+/** A target system: base URL, default headers, auth profile and variables ({{baseUrl}} is implicit). */
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonPropertyOrder({"name", "baseUrl", "auth", "headers", "variables"})
+public record Environment(String name, String baseUrl, String auth, List<KeyValue> headers, List<KeyValue> variables) {
 
-    @JacksonXmlProperty(isAttribute = true)
-    private String name;
-
-    @JacksonXmlProperty(isAttribute = true)
-    private String url;
-
-    @JacksonXmlProperty(isAttribute = true)
-    private String authProfile;
-
-    @JacksonXmlElementWrapper(localName = "headers")
-    @JacksonXmlProperty(localName = "param")
-    private List<Param> headers;
-
-    /** Environment-level variables usable as {{name}} in any request field. */
-    @JacksonXmlElementWrapper(localName = "variables")
-    @JacksonXmlProperty(localName = "param")
-    private List<Param> variables;
-
-    public Environment() {
-        this.headers   = new ArrayList<>();
-        this.variables = new ArrayList<>();
+    public Environment {
+        name = name == null ? "" : name;
+        baseUrl = Lists.text(baseUrl);
+        auth = Lists.text(auth);
+        headers = Lists.of(headers);
+        variables = Lists.of(variables);
     }
-
-    public Environment(String name, String url, String authProfile, List<Param> headers) {
-        this.name        = name;
-        this.url         = url;
-        this.authProfile = authProfile;
-        this.headers     = headers != null ? headers : new ArrayList<>();
-        this.variables   = new ArrayList<>();
-    }
-
-    public String getName()                  { return name; }
-    public void setName(String name)         { this.name = name; }
-
-    public String getUrl()                   { return url; }
-    public void setUrl(String url)           { this.url = url; }
-
-    public String getAuthProfile()           { return authProfile; }
-    public void setAuthProfile(String ap)    { this.authProfile = ap; }
-
-    public List<Param> getHeaders()          { return headers; }
-    public void setHeaders(List<Param> h)    { this.headers = h; }
-
-    public List<Param> getVariables()        { return variables; }
-    public void setVariables(List<Param> v)  { this.variables = v; }
 }

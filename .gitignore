@@ -1,17 +1,12 @@
-# Eclipse
+target/
+ui/node_modules/
+ui/dist/
+.idea/
+*.iml
 .classpath
 .project
 .settings/
-
-# Maven build output
-target/
-
-# IDE
-.idea/
-*.iml
-
-# OS
 .DS_Store
 Thumbs.db
-# javac crash/parameter dumps (sandbox syntax checks)
-javac.*.args
+results/
+*.run.jsonl

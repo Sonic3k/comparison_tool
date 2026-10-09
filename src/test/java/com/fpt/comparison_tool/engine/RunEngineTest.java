@@ -1,0 +1,282 @@
+package com.fpt.comparison_tool.engine;
+
+import com.fpt.comparison_tool.model.Suite;
+import com.fpt.comparison_tool.result.CaseResult;
+import com.fpt.comparison_tool.result.HookResult;
+import com.fpt.comparison_tool.result.RunSummary;
+import com.fpt.comparison_tool.result.Status;
+import com.fpt.comparison_tool.result.StepResult;
+import com.fpt.comparison_tool.suite.SuiteJson;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class RunEngineTest {
+
+    static FakeApi target;
+    static FakeApi baseline;
+    static RunEngine engine;
+
+    @BeforeAll
+    static void start() throws Exception {
+        target = new FakeApi("target");
+        baseline = new FakeApi("baseline");
+        engine = new RunEngine();
+    }
+
+    @AfterAll
+    static void stop() throws Exception {
+        target.close();
+        baseline.close();
+        engine.close();
+    }
+
+    static final class Collector implements RunListener {
+        final List<CaseResult> cases = Collections.synchronizedList(new ArrayList<>());
+        final List<HookResult> hooks = Collections.synchronizedList(new ArrayList<>());
+        final List<String> order = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public void hook(HookResult r) {
+            hooks.add(r);
+            order.add(r.hook() + ":" + String.join("/", r.path()));
+        }
+
+        @Override
+        public void caseFinished(CaseResult r) {
+            cases.add(r);
+            order.add("case:" + r.key());
+        }
+
+        CaseResult get(String key) {
+            return cases.stream().filter(c -> c.key().equals(key)).findFirst().orElseThrow();
+        }
+    }
+
+    static Suite suite(String itemsJson, String extra) {
+        String json = """
+                {
+                  "name": "t",
+                  "settings": {"concurrency": 8},
+                  "environments": [
+                    {"name": "target", "baseUrl": "%s", "variables": [{"key": "who", "value": "T"}]},
+                    {"name": "base", "baseUrl": "%s", "variables": [{"key": "who", "value": "B"}]}
+                  ],
+                  %s
+                  "items": %s
+                }
+                """.formatted(target.url(), baseline.url(), extra == null ? "" : extra + ",", itemsJson);
+        return SuiteJson.parse(json).suite();
+    }
+
+    static RunRequest request(Suite s) {
+        return new RunRequest(s, "target", null, Selection.all(), new RunOptions(null, "all", null, null, null, null), null);
+    }
+
+    @Test
+    void parallelCasesKeepTheirOwnVariables() {
+        StringBuilder cases = new StringBuilder();
+        for (int i = 0; i < 24; i++) {
+            if (i > 0) cases.append(',');
+            cases.append("""
+                    {"type": "case", "key": "C%d", "name": "chain %d", "steps": [
+                      {"name": "create", "method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "n%d"}},
+                       "extract": [{"name": "id", "path": "$.id"}], "expect": {"status": "201"}},
+                      {"name": "slow", "url": "/slow"},
+                      {"name": "read", "url": "/items/{{id}}", "expect": {"status": "200", "assertions": ["$.name == \\"n%d\\""]}}
+                    ]}""".formatted(i, i, i, i));
+        }
+        Suite s = suite("[{\"type\": \"folder\", \"name\": \"F\", \"items\": [" + cases + "]}]", null);
+        Collector c = new Collector();
+        RunSummary sum = engine.run(request(s), c);
+        assertEquals(24, sum.total());
+        assertEquals(24, sum.count(Status.PASS), () -> c.cases.stream().filter(x -> x.statusEnum() != Status.PASS)
+                .map(x -> x.key() + " " + x.reason()).collect(Collectors.joining("\n")));
+        assertTrue(target.maxConcurrent.get() > 1, "test cases should overlap");
+    }
+
+    @Test
+    void folderSetupVariablesReachCasesAndTeardownRunsLast() {
+        String items = """
+                [{"type": "folder", "name": "F",
+                  "setup": [{"name": "seed", "method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "shared"}},
+                             "extract": [{"name": "sid", "path": "$.id"}]}],
+                  "teardown": [{"name": "remove", "method": "DELETE", "url": "/items/{{sid}}"}],
+                  "items": [
+                    {"type": "case", "key": "A", "steps": [{"url": "/items/{{sid}}", "expect": {"assertions": ["$.name == shared"]}}]},
+                    {"type": "case", "key": "B", "steps": [{"url": "/items/{{sid}}", "expect": {"assertions": ["$.id exists"]}}]}
+                  ]}]""";
+        Collector c = new Collector();
+        RunSummary sum = engine.run(request(suite(items, null)), c);
+        assertEquals(2, sum.count(Status.PASS));
+        assertEquals("setup:F", c.order.get(0));
+        assertEquals("teardown:F", c.order.get(c.order.size() - 1));
+        HookResult setup = c.hooks.get(0);
+        assertNotNull(setup.vars().get("target").get("sid"));
+    }
+
+    @Test
+    void requiredSetupFailureBlocksTheFolder() {
+        String items = """
+                [{"type": "folder", "name": "F",
+                  "setup": [{"name": "must", "url": "/nothing-here", "options": {"required": true}}],
+                  "items": [{"type": "case", "key": "A", "steps": [{"url": "/slow"}]}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        assertEquals(Status.BLOCKED, c.get("A").statusEnum());
+        assertTrue(c.get("A").reason().contains("required step"));
+    }
+
+    @Test
+    void dependsOnWaitsAndSharesFolderExports() {
+        String items = """
+                [{"type": "folder", "name": "F", "items": [
+                  {"type": "case", "key": "B", "dependsOn": ["A"], "steps": [
+                    {"url": "/items/{{made}}", "expect": {"assertions": ["$.name == from-a"]}}]},
+                  {"type": "case", "key": "A", "steps": [
+                    {"url": "/slow"},
+                    {"method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "from-a"}},
+                     "extract": [{"name": "made", "path": "$.id", "scope": "folder"}]}]}
+                ]}]""";
+        Collector c = new Collector();
+        RunSummary sum = engine.run(request(suite(items, null)), c);
+        assertEquals(2, sum.count(Status.PASS), () -> c.cases.toString());
+        assertTrue(c.order.indexOf("case:A") < c.order.indexOf("case:B"));
+    }
+
+    @Test
+    void caseVariablesAreNotVisibleToOtherCases() {
+        String items = """
+                [{"type": "folder", "name": "F", "run": {"cases": "serial"}, "items": [
+                  {"type": "case", "key": "A", "steps": [{"method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "x"}},
+                                                         "extract": [{"name": "own", "path": "$.id"}]}]},
+                  {"type": "case", "key": "B", "steps": [{"url": "/items/{{own}}"}]}
+                ]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        assertEquals(Status.PASS, c.get("A").statusEnum());
+        assertEquals(Status.ERROR, c.get("B").statusEnum());
+        assertTrue(c.get("B").reason().contains("{{own}}"));
+    }
+
+    @Test
+    void retryRepeatsUntilThePassAndErrorSkipsTheRest() {
+        target.flakyCalls.set(0);
+        String items = """
+                [{"type": "case", "key": "R", "steps": [
+                   {"url": "/flaky", "expect": {"status": "200"}, "options": {"retry": {"times": 3, "intervalMs": 10}}}]},
+                 {"type": "case", "key": "E", "steps": [
+                   {"url": "/items/{{missing}}"}, {"url": "/slow"}],
+                  "cleanup": [{"url": "/slow"}]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, null)), c);
+        CaseResult r = c.get("R");
+        assertEquals(Status.PASS, r.statusEnum());
+        assertEquals(3, r.steps().get(0).attempts());
+        CaseResult e = c.get("E");
+        assertEquals(Status.ERROR, e.statusEnum());
+        assertEquals("skipped", e.steps().get(1).status());
+        assertEquals("pass", e.steps().get(2).status());
+        assertEquals("cleanup", e.steps().get(2).phase());
+    }
+
+    @Test
+    void compareRunDiffsEachStepWithItsOwnVariables() {
+        String items = """
+                [{"type": "case", "key": "Q", "steps": [
+                   {"url": "/quote", "extract": [{"name": "p", "path": "$.price"}], "options": {"ignoreFields": ["ts"]}}]},
+                 {"type": "case", "key": "W", "steps": [
+                   {"method": "POST", "url": "/items", "body": {"type": "json", "json": {"name": "{{who}}"}},
+                    "extract": [{"name": "id", "path": "$.id"}], "options": {"compare": false}},
+                   {"url": "/items/{{id}}", "options": {"ignoreFields": ["flavour", "id"]}}]}]""";
+        Suite s = suite(items, null);
+        Collector c = new Collector();
+        engine.run(new RunRequest(s, "target", "base", Selection.all(), new RunOptions(null, "all", null, null, null, null), null), c);
+        CaseResult q = c.get("Q");
+        assertEquals(Status.FAIL, q.statusEnum());
+        assertTrue(q.reason().contains("price"), q.reason());
+        assertNotNull(q.steps().get(0).baseline());
+        CaseResult w = c.get("W");
+        StepResult read = w.steps().get(1);
+        assertEquals(Status.FAIL, w.statusEnum(), "names differ (B vs T) on each lane");
+        assertTrue(read.diffs().get(0).contains("name"), read.diffs().toString());
+    }
+
+    @Test
+    void oauth2TokenIsFetchedOnceAndSent() {
+        target.tokenCalls.set(0);
+        String extra = """
+                "authProfiles": [{"name": "svc", "type": "oauth2", "tokenUrl": "%s/token", "clientId": "c", "clientSecret": "s3cret"}],
+                "defaults": {"auth": "svc"}""".formatted(target.url());
+        StringBuilder cases = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            if (i > 0) cases.append(',');
+            cases.append("{\"type\": \"case\", \"key\": \"S" + i + "\", \"steps\": [{\"url\": \"/secure\", \"expect\": {\"status\": \"200\"}}]}");
+        }
+        Collector c = new Collector();
+        RunSummary sum = engine.run(request(suite("[" + cases + "]", extra)), c);
+        assertEquals(6, sum.count(Status.PASS), () -> c.cases.toString());
+        assertEquals(1, target.tokenCalls.get());
+    }
+
+    @Test
+    void headersAndFormBodiesFollowTheDefaultsChain() {
+        String extra = "\"defaults\": {\"headers\": [{\"key\": \"X-Suite\", \"value\": \"s\"}, {\"key\": \"X-Over\", \"value\": \"suite\"}]}";
+        String items = """
+                [{"type": "folder", "name": "F", "defaults": {"headers": [{"key": "X-Over", "value": "folder"}]}, "items": [
+                  {"type": "case", "key": "H", "steps": [
+                    {"url": "/headers", "headers": [{"key": "X-Step", "value": "{{who}}"}],
+                     "expect": {"assertions": ["$.x-suite == s", "$.x-over == folder", "$.x-step == T"]}},
+                    {"method": "POST", "url": "/form", "body": {"type": "form", "form": [{"key": "a", "value": "1 2"}]},
+                     "expect": {"assertions": ["$.received == a=1+2", "$.type contains x-www-form-urlencoded"]}}]}
+                ]}]""";
+        Collector c = new Collector();
+        engine.run(request(suite(items, extra)), c);
+        assertEquals(Status.PASS, c.get("H").statusEnum(), () -> c.get("H").reason());
+    }
+
+    @Test
+    void stopSkipsWhatHasNotStartedButStillRunsTeardown() throws Exception {
+        StringBuilder cases = new StringBuilder();
+        for (int i = 0; i < 30; i++) {
+            if (i > 0) cases.append(',');
+            cases.append("{\"type\": \"case\", \"key\": \"S" + i + "\", \"steps\": [{\"url\": \"/slow\"}, {\"url\": \"/slow\"}]}");
+        }
+        String items = "[{\"type\": \"folder\", \"name\": \"F\", \"run\": {\"cases\": \"serial\"}, \"teardown\": [{\"url\": \"/slow\"}], \"items\": [" + cases + "]}]";
+        Collector c = new Collector();
+        RunEngine.Handle h = engine.start(request(suite(items, null)), c);
+        Thread.sleep(700);
+        h.control().stop();
+        RunSummary sum = h.done().get();
+        assertTrue(sum.stopped());
+        assertTrue(sum.count(Status.SKIPPED) > 10, sum.counts().toString());
+        assertEquals("teardown:F", c.order.get(c.order.size() - 1));
+    }
+
+    @Test
+    void selectionByKeyPullsInDependencies() {
+        String items = """
+                [{"type": "folder", "name": "F", "items": [
+                  {"type": "case", "key": "A", "steps": [{"url": "/slow"}]},
+                  {"type": "case", "key": "B", "dependsOn": ["A"], "steps": [{"url": "/slow"}]},
+                  {"type": "case", "key": "C", "steps": [{"url": "/slow"}]}
+                ]}]""";
+        Suite s = suite(items, null);
+        Collector c = new Collector();
+        RunSummary sum = engine.run(new RunRequest(s, "target", null, new Selection(null, List.of("B"), null, null, null),
+                RunOptions.defaults(), null), c);
+        assertEquals(2, sum.total());
+        assertEquals(Map.of("A", "pass", "B", "pass"),
+                c.cases.stream().collect(Collectors.toMap(CaseResult::key, CaseResult::status)));
+    }
+}
