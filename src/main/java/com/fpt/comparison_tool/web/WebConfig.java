@@ -69,7 +69,7 @@ public class WebConfig {
                 chain.doFilter(req, res);
             } else {
                 HttpServletResponse w = (HttpServletResponse) res;
-                w.setHeader("WWW-Authenticate", "Basic realm=\"Comparison Tool\"");
+                w.setHeader("WWW-Authenticate", "Basic realm=\"API Comparison Tools\"");
                 w.sendError(401);
             }
         });
@@ -81,7 +81,7 @@ public class WebConfig {
         String port = env.getProperty("local.server.port", env.getProperty("server.port", "8080"));
         String file = System.getProperty("ct.startup-file");
         System.out.println();
-        System.out.println("Comparison Tool is running: http://localhost:" + port);
+        System.out.println("API Comparison Tools is running: http://localhost:" + port);
         if (file != null) System.out.println("Suite: " + file + " (Save writes back to this file, results go to results/ next to it)");
         System.out.println();
         Json.MAPPER.getFactory();

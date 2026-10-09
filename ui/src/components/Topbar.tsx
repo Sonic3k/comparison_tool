@@ -67,14 +67,19 @@ export function Topbar() {
 
   return (
     <header className="topbar">
-      <div className="brand" title={serverFile ?? fileName ?? undefined}>
+      <div className="brand">
         <div className="brand-mark">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 4.5h6M3 8h10M3 11.5h5" /></svg>
         </div>
-        <span className="brand-name">{suite ? suite.name || "Untitled suite" : "Comparison Tool"}</span>
-        {suite && dirty ? <span className="dirty-dot" title="Unsaved changes" /> : null}
-        {suite ? <span className="brand-file">{fileName ?? "not saved yet"}</span> : null}
+        <span className="brand-name">API Comparison Tools</span>
       </div>
+      {suite ? (
+        <div className="suite-title" title={serverFile ?? fileName ?? undefined}>
+          <span className="suite-name">{suite.name || "Untitled suite"}</span>
+          {dirty ? <span className="dirty-dot" title="Unsaved changes" /> : null}
+          <span className="brand-file">{fileName ?? "not saved yet"}</span>
+        </div>
+      ) : null}
       <DropMenu trigger={({ toggle }) => <Button variant="ghost" onClick={toggle}>File <ChevronDown size={13} /></Button>} items={fileItems} />
       {suite ? (
         <>
@@ -98,11 +103,11 @@ export function Topbar() {
             <Button variant="stop" icon={<CircleStop size={14} />} onClick={() => st.stopRun(live.runId)} title="Stop the run (press again to stop at once)">Stop</Button>
           ) : (
             <span className="row" style={{ gap: 0 }}>
-              <Button variant="primary" className="split-l" icon={<Play size={14} />} onClick={() => runNodes(multi.length > 1 ? multi : [])}
+              <Button variant="run" className="split-l" icon={<Play size={14} />} onClick={() => runNodes(multi.length > 1 ? multi : [])}
                 title={multi.length > 1 ? `Run the ${multi.length} selected items` : "Run the whole suite"}>
                 {multi.length > 1 ? `Run ${multi.length} selected` : "Run all"}
               </Button>
-              <DropMenu align="right" trigger={({ toggle }) => <Button variant="primary" className="split-r" icon={<ChevronDown size={14} />} onClick={toggle} title="Run options" />}
+              <DropMenu align="right" trigger={({ toggle }) => <Button variant="run" className="split-r" icon={<ChevronDown size={14} />} onClick={toggle} title="Run options" />}
                 items={[
                   { label: "Run whole suite", icon: <Play size={14} />, onClick: () => runNodes([]) },
                   { label: `Run selected (${multi.length})`, onClick: () => runNodes(multi), disabled: !multi.length },

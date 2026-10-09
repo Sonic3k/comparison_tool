@@ -31,6 +31,11 @@ export function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  const suiteName = suite?.name;
+  useEffect(() => {
+    document.title = suiteName ? `${suiteName} - API Comparison Tools` : "API Comparison Tools";
+  }, [suiteName]);
+
   useEffect(() => {
     const stop = startRouter();
     (async () => {

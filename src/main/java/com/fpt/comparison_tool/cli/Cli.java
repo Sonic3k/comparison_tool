@@ -286,7 +286,7 @@ public final class Cli {
 
     private int help() {
         out.println("""
-                Comparison Tool 2
+                API Comparison Tools 2
 
                   java -jar comparison-tool.jar                     start the UI on http://localhost:8080
                   java -jar comparison-tool.jar <suite.json>        start the UI with this suite open (Save writes back,

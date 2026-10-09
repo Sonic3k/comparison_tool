@@ -17,7 +17,7 @@ export function Welcome() {
     <div className="welcome">
       <div className="welcome-card">
         <div>
-          <h1>Comparison Tool</h1>
+          <h1>API Comparison Tools</h1>
           <div className="muted">API test suites organised by test case: run them, compare two environments, and triage what failed.</div>
         </div>
         <div className={`drop${over ? " over" : ""}`}

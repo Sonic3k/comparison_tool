@@ -50,7 +50,7 @@ export function FolderEditor({ id }: { id: string }) {
       <div className="head">
         <input className="input bare title-input grow" value={f.name} placeholder="Folder name" onChange={(e) => edit((x) => ({ ...x, name: e.target.value }), "name")} />
         <Check checked={!f.disabled} onChange={(v) => edit((x) => ({ ...x, disabled: v ? undefined : true }))} title="Nothing inside a disabled folder runs">Enabled</Check>
-        <Button variant="primary" icon={<Play size={14} />} onClick={() => runNodes([id])} title="Run everything in this folder">Run folder</Button>
+        <Button variant="run" icon={<Play size={14} />} onClick={() => runNodes([id])} title="Run everything in this folder">Run folder</Button>
         <DropMenu align="right" trigger={({ toggle }) => <Button variant="ghost" icon={<Ellipsis size={16} />} onClick={toggle} title="More" />}
           items={[
             { label: "New test case here", icon: <FilePlus size={14} />, onClick: () => addCase(where) },

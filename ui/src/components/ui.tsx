@@ -6,7 +6,7 @@ import { Ban, Circle, CircleCheck, CircleDashed, CircleX, LoaderCircle, Triangle
 // ------------------------------------------------------------------ buttons
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "primary" | "ghost" | "danger" | "stop";
+  variant?: "default" | "primary" | "ghost" | "danger" | "stop" | "run";
   size?: "sm";
   icon?: ReactNode;
 };

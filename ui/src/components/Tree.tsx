@@ -298,7 +298,7 @@ export function Tree() {
         {multi.length > 1 ? (
           <>
             <span>· {multi.length} selected</span>
-            <Button size="sm" className="right" icon={<Play size={13} />} onClick={() => runNodes(multi)}>Run selected</Button>
+            <Button size="sm" variant="run" className="right" icon={<Play size={13} />} onClick={() => runNodes(multi)}>Run selected</Button>
           </>
         ) : null}
       </div>

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import {
-  ChevronLeft, CircleStop, Ellipsis, FileSpreadsheet, FileText, FolderOpen, Pencil, Play, RotateCcw, Save, X,
+  ChevronDown, ChevronLeft, CircleStop, Ellipsis, FileSpreadsheet, FileText, FolderOpen, Pencil, Play, RotateCcw, Save, X,
 } from "lucide-react";
 import { exportReport, rerun, rerunCase, saveRunResult } from "../actions";
 import { openCase, openFolder } from "../nav";
@@ -76,7 +76,7 @@ function RunSummaryView({ run }: { run: RunView }) {
               <Button variant="stop" icon={<CircleStop size={14} />} onClick={() => st.stopRun(run.runId)}>Stop</Button>
             ) : (
               <>
-                <DropMenu align="right" trigger={({ toggle }) => <Button icon={<RotateCcw size={14} />} onClick={toggle}>Run again</Button>}
+                <DropMenu align="right" trigger={({ toggle }) => <Button variant="run" icon={<Play size={14} />} onClick={toggle}>Run again <ChevronDown size={13} /></Button>}
                   items={[
                     { label: `Not passed (${counts.notpass})`, onClick: () => rerun(run, "notpass", false), disabled: !counts.notpass },
                     { label: "Not passed, reusing this run's setup values", onClick: () => rerun(run, "notpass", true), disabled: !counts.notpass || !reusable },
@@ -233,7 +233,7 @@ function CaseResultView({ run, caseId }: { run: RunView; caseId: string }) {
         <span className="mono muted">{c.key}</span>
         <span style={{ fontWeight: 600, fontSize: 14 }} className="ellipsis grow">{c.name !== c.key ? c.name : ""}</span>
         <Button icon={<Pencil size={14} />} disabled={!inSuite} onClick={() => step ? openCase(caseId, step.phase as Phase, step.index) : openCase(caseId)} title="Open in the editor (E)">Edit</Button>
-        <Button icon={<Play size={14} />} disabled={!inSuite} onClick={() => rerunCase(run, caseId)} title="Run this test case again (R)">Run again</Button>
+        <Button variant="run" icon={<Play size={14} />} disabled={!inSuite} onClick={() => rerunCase(run, caseId)} title="Run this test case again (R)">Run again</Button>
         <DropMenu align="right" trigger={({ toggle }) => <Button variant="ghost" icon={<Ellipsis size={16} />} onClick={toggle} title="More" />}
           items={[
             { label: "Run again reusing this run's setup values", icon: <RotateCcw size={14} />, disabled: !inSuite, onClick: () => rerunCase(run, caseId, true) },

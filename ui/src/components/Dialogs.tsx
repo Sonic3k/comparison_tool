@@ -194,7 +194,7 @@ export function RunDialog({ onClose, initialScope }: { onClose: () => void; init
       <>
         <span className="muted" style={{ marginRight: "auto" }}>{env}{baselineEnv ? ` compared with ${baselineEnv}` : ""}</span>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon={<Play size={14} />} onClick={start} disabled={(scope === "tags" && !tags.length) || (scope === "selected" && !multi.length)}>Run</Button>
+        <Button variant="run" icon={<Play size={14} />} onClick={start} disabled={(scope === "tags" && !tags.length) || (scope === "selected" && !multi.length)}>Run</Button>
       </>
     }>
       <Field label="What to run">

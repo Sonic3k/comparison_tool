@@ -1,4 +1,4 @@
-# Comparison Tool 2
+# API Comparison Tools 2
 
 API test suites organised by test case. A test case is a short flow of HTTP steps with checks; folders group test
 cases and can have their own setup and teardown. A run can also call a second environment (the baseline) and compare

@@ -14,9 +14,9 @@ import { tags as t } from "@lezer/highlight";
 
 const style = HighlightStyle.define([
   { tag: t.propertyName, color: "var(--text)" },
-  { tag: t.string, color: "var(--pass)" },
-  { tag: t.number, color: "var(--running)" },
-  { tag: [t.bool, t.null, t.atom], color: "var(--m-patch)" },
+  { tag: t.string, color: "var(--syn-str)" },
+  { tag: t.number, color: "var(--syn-num)" },
+  { tag: [t.bool, t.null, t.atom], color: "var(--syn-bool)" },
   { tag: [t.punctuation, t.separator, t.brace, t.squareBracket], color: "var(--faint)" },
   { tag: t.invalid, color: "var(--fail)" },
 ]);
